@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  mechdog_gazebo:
+    image: mechdog-ros2-gazebo:kilted
+    container_name: mechdog_gazebo
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: kilted
+
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/tmp/.docker.xauth
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Useful for some Gazebo/OGRE setups
+      - LIBGL_ALWAYS_INDIRECT=0
+
+      # Launch target (this matches the package we created)
+      - LAUNCH_PKG=mechdog_gazebo
+      - LAUNCH_FILE=bringup_gazebo.launch.py
+      - LAUNCH_ARGS=${LAUNCH_ARGS:-"gui:=true"}
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
+      - ./ws:/work/ws:rw
+    working_dir: /work/ws
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    network_mode: host
+    ipc: host
+    privileged: true
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/humble/setup.bash;
+        colcon build --symlink-install;
+        source install/setup.bash;
+        ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS}
+      "

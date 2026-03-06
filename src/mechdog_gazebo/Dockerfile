@@ -1,0 +1,22 @@
+ARG ROS_DISTRO=kilted
+FROM osrf/ros:${ROS_DISTRO}-desktop-full
+
+SHELL ["/bin/bash", "-lc"]
+
+# Gazebo Classic (commonly used with ROS2 Humble via gazebo_ros_pkgs)
+RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-ros-gz \
+    ros-${ROS_DISTRO}-ros-gz-sim \
+    ros-${ROS_DISTRO}-ros-gz-bridge \
+    ros-${ROS_DISTRO}-ros-gz-image \
+    ros-${ROS_DISTRO}-xacro \
+    ros-${ROS_DISTRO}-robot-state-publisher \
+    ros-${ROS_DISTRO}-joint-state-publisher-gui \
+    ros-${ROS_DISTRO}-joint-state-publisher \
+    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp  \
+    python3-colcon-common-extensions \
+    mesa-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work/ws
+

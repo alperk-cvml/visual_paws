@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  mechdog_gazebo:
+    image: mechdog-ros2-gazebo:kilted
+    container_name: mechdog_gazebo
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: kilted
+
+    # If you want GUI Gazebo:
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/tmp/.docker.xauth
+
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Useful for some Gazebo/OGRE setups
+      - LIBGL_ALWAYS_INDIRECT=0
+
+      # Choose what to run
+      - LAUNCH_PKG=mechdog_gazebo
+      - LAUNCH_FILE=bringup_gazebo.launch.py
+      - LAUNCH_ARGS=world:=/work/ws/install/mechdog_gazebo/share/mechdog_gazebo/worlds/empty.sdf
+      - LAUNCH_ARGS=${LAUNCH_ARGS:-"gui:=true"}
+
+    volumes:
+      # X11 socket for GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Xauthority (created by the helper command below)
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
+
+      # Your ROS2 workspace (expects ./ws/src contains mechdog packages)
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # If you need access to /dev/dri for GPU rendering (common for Gazebo GUI)
+    devices:
+      - /dev/dri:/dev/dri
+
+    # Networking: host is simplest for ROS discovery + GUI tools
+    network_mode: host
+    ipc: host
+
+    # Sometimes needed for Gazebo + hardware accel
+    privileged: true
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        colcon build --symlink-install;
+        source /work/ws/install/setup.bash;
+        ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS}
+      "
+
