@@ -2,9 +2,11 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
-from launch.substitutions import LaunchConfiguration, Command
+from launch.actions import DeclareLaunchArgument, TimerAction, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
@@ -19,14 +21,6 @@ def generate_launch_description():
     world_default = os.path.join(pkg_share, "worlds", "empty.sdf")
     xacro_file = os.path.join(pkg_share, "urdf", "mechdog.urdf.xacro")
 
-    declare_args = [
-        DeclareLaunchArgument("world", default_value=world_default),
-        DeclareLaunchArgument("robot_name", default_value="mechdog"),
-        DeclareLaunchArgument("x", default_value="0.0"),
-        DeclareLaunchArgument("y", default_value="0.0"),
-        DeclareLaunchArgument("z", default_value="0.35"),
-    ]
-
     robot_description = {"robot_description": Command(["xacro ", xacro_file])}
 
     rsp = Node(
@@ -36,33 +30,54 @@ def generate_launch_description():
         parameters=[robot_description],
     )
 
-    # Start Gazebo Sim (GUI by default)
-    gz_sim = ExecuteProcess(
-        cmd=["gz", "sim", "-v", "4", world],
-        output="screen",
+    gz_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare("ros_gz_sim"),
+                "launch",
+                "gz_sim.launch.py",
+            ])
+        ),
+        launch_arguments={
+            # IMPORTANT: no -s here
+            "gz_args": [' -r -v 4 ', world],
+            "on_exit_shutdown": "true",
+        }.items(),
     )
+    # gz_server = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([
+    #             FindPackageShare("ros_gz_sim"),
+    #             "launch",
+    #             "gz_server.launch.py",
+    #         ])
+    #     ),
+    #     launch_arguments={
+    #         "world_sdf_file": world,
+    #     }.items(),
+    # )
 
-    # Spawn from /robot_description via ros_gz_sim
-    spawn = ExecuteProcess(
-        cmd=[
-            "ros2", "run", "ros_gz_sim", "create",
+    spawn = Node(
+        package="ros_gz_sim",
+        executable="create",
+        output="screen",
+        arguments=[
             "-name", robot_name,
             "-topic", "robot_description",
             "-x", x,
             "-y", y,
             "-z", z,
         ],
-        output="screen",
     )
 
-    # Give Gazebo a moment to come up before spawning
-    spawn_delayed = TimerAction(period=3.0, actions=[spawn])
-
-    ld = LaunchDescription()
-    for a in declare_args:
-        ld.add_action(a)
-
-    ld.add_action(rsp)
-    ld.add_action(gz_sim)
-    ld.add_action(spawn_delayed)
-    return ld
+    return LaunchDescription([
+        DeclareLaunchArgument("world", default_value=world_default),
+        DeclareLaunchArgument("robot_name", default_value="mechdog"),
+        DeclareLaunchArgument("x", default_value="0.0"),
+        DeclareLaunchArgument("y", default_value="0.0"),
+        DeclareLaunchArgument("z", default_value="0.35"),
+        rsp,
+        #gz_server,
+        gz_sim,
+        TimerAction(period=8.0, actions=[spawn]),
+    ])

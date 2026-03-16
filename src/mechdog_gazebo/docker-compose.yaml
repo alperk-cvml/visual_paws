@@ -4,6 +4,7 @@ services:
   mechdog_gazebo:
     image: mechdog-ros2-gazebo:kilted
     container_name: mechdog_gazebo
+    runtime: nvidia
     build:
       context: .
       dockerfile: Dockerfile
@@ -14,7 +15,16 @@ services:
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+      - GZ_PARTITION=mechdog_sim
       - XAUTHORITY=/tmp/.docker.xauth
+        # - LIBGL_ALWAYS_SOFTWARE=1
+      - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+      - WAYLAND_DISPLAY=""
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - __GLX_VENDOR_LIBRARY_NAME=nvidia
+      - __NV_PRIME_RENDER_OFFLOAD=1
 
       # ROS
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
@@ -25,7 +35,7 @@ services:
 
       # Choose what to run
       - LAUNCH_PKG=mechdog_gazebo
-      - LAUNCH_FILE=bringup_gazebo.launch.py
+      - LAUNCH_FILE=gazebo.launch.py
       - LAUNCH_ARGS=world:=/work/ws/install/mechdog_gazebo/share/mechdog_gazebo/worlds/empty.sdf
       - LAUNCH_ARGS=${LAUNCH_ARGS:-"gui:=true"}
 
