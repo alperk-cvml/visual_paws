@@ -104,6 +104,12 @@ def generate_launch_description():
             "/depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
             "/depth_camera/depth_image/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+            "/model/quadruped/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
+            "/model/quadruped/pose_static@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
+        ],
+        remappings=[
+            ("/model/quadruped/pose", "/tf"),
+            ("/model/quadruped/pose_static", "/tf_static"),
         ],
         output="screen",
     )
