@@ -311,10 +311,10 @@
     <xacro:leg_joints_hw prefix="RR"/>
   </ros2_control>
 
-  <!-- ===================== GAZEBO PLUGINS (Gazebo Ionic / gz-sim) ===================== -->
+  <!-- ===================== GAZEBO PLUGINS (Gazebo Harmonic / gz-sim) ===================== -->
   <!--
     All libgazebo_ros_*.so plugins are Gazebo Classic only.
-    Gazebo Ionic uses gz-sim system plugins with the gz:: namespace.
+    Gazebo Harmonic uses gz-sim system plugins with the gz:: namespace.
     Sensor data is bridged to ROS via ros_gz_bridge (see launch file).
   -->
 
@@ -335,7 +335,7 @@
     </plugin>
   </gazebo>
 
-  <!-- IMU sensor (Gazebo Ionic SDFormat style) -->
+  <!-- IMU sensor (Gazebo Harmonic SDFormat style) -->
   <gazebo reference="imu_link">
     <sensor name="imu_sensor" type="imu">
       <always_on>true</always_on>
@@ -357,7 +357,7 @@
     </sensor>
   </gazebo>
 
-  <!-- Front camera (Gazebo Ionic SDFormat style) -->
+  <!-- Front camera (Gazebo Harmonic SDFormat style) -->
   <gazebo reference="camera_link">
     <sensor name="front_camera" type="camera">
       <always_on>true</always_on>
@@ -397,7 +397,7 @@
     </sensor>
   </gazebo>
 
-  <!-- Foot contact sensors (Gazebo Ionic) -->
+  <!-- Foot contact sensors (Gazebo Harmonic) -->
   <xacro:macro name="foot_contact_sensor" params="prefix">
     <gazebo reference="${prefix}_foot_link">
       <sensor name="${prefix}_foot_contact" type="contact">

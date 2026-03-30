@@ -1,5 +1,5 @@
 """
-Launch file for quadruped robot — ROS 2 Kilted + Gazebo Ionic (gz-sim)
+Launch file for quadruped robot — ROS 2 Jazzy + Gazebo Harmonic (gz-sim)
 
 
 Usage:
@@ -58,7 +58,7 @@ def generate_launch_description():
         ],
     )
 
-    # ── Gazebo Ionic ──────────────────────────────────────────────
+    # ── Gazebo Harmonic ───────────────────────────────────────────
     # gz_args: -r = run immediately (not paused)
     # Pass world_path as a plain Python string so gz receives the real
     # filesystem path, not a Fuel download URI.

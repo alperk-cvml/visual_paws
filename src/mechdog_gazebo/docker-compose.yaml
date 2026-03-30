@@ -2,14 +2,14 @@ version: "3.9"
 
 services:
   mechdog_gazebo:
-    image: mechdog-ros2-gazebo:kilted
+    image: mechdog-ros2-gazebo:jazzy
     container_name: mechdog_gazebo
     runtime: nvidia
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        ROS_DISTRO: kilted
+        ROS_DISTRO: jazzy
 
     # If you want GUI Gazebo:
     environment:

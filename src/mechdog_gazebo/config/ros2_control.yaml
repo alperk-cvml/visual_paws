@@ -1,5 +1,5 @@
 # ros2_control configuration for quadruped robot
-# Hardware plugin: gz_ros2_control/GazeboSimSystem  (Gazebo Ionic)
+# Hardware plugin: gz_ros2_control/GazeboSimSystem  (Gazebo Harmonic)
 
 controller_manager:
   ros__parameters:
