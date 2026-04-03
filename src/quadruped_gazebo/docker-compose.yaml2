@@ -1,14 +1,14 @@
 version: "3.9"
 
 services:
-  mechdog_gazebo:
-    image: mechdog-ros2-gazebo:kilted
-    container_name: mechdog_gazebo
+  quadruped_gazebo:
+    image: mechdog-ros2-gazebo:jazzy
+    container_name: quadruped_gazebo
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        ROS_DISTRO: kilted
+        ROS_DISTRO: jazzy
 
     environment:
       - DISPLAY=${DISPLAY}
@@ -22,7 +22,7 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
 
       # Launch target (this matches the package we created)
-      - LAUNCH_PKG=mechdog_gazebo
+      - LAUNCH_PKG=quadruped_gazebo
       - LAUNCH_FILE=bringup_gazebo.launch.py
       - LAUNCH_ARGS=${LAUNCH_ARGS:-"gui:=true"}
 
