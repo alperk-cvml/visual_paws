@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>mechdog_gazebo</name>
+  <name>quadruped_gazebo</name>
   <version>0.0.1</version>
   <description>MechDog Gazebo bringup (minimal skeleton)</description>
 
