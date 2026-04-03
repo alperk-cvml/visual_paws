@@ -1,9 +1,9 @@
 version: "3.9"
 
 services:
-  mechdog_gazebo:
+  quadruped_gazebo:
     image: mechdog-ros2-gazebo:jazzy
-    container_name: mechdog_gazebo
+    container_name: quadruped_gazebo
     runtime: nvidia
     build:
       context: .
@@ -34,9 +34,9 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
 
       # Choose what to run
-      - LAUNCH_PKG=mechdog_gazebo
+      - LAUNCH_PKG=quadruped_gazebo
       - LAUNCH_FILE=gazebo.launch.py
-      - LAUNCH_ARGS=world:=/work/ws/install/mechdog_gazebo/share/mechdog_gazebo/worlds/empty.sdf
+      - LAUNCH_ARGS=world:=/work/ws/install/quadruped_gazebo/share/quadruped_gazebo/worlds/empty.sdf
       - LAUNCH_ARGS=${LAUNCH_ARGS:-"gui:=true"}
 
     volumes:

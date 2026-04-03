@@ -322,7 +322,7 @@
   <!-- Also requires <ros2_control> tag in URDF (see below) and gz_ros2_control installed -->
   <gazebo>
     <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-      <parameters>$(find mechdog_gazebo)/config/ros2_control.yaml</parameters>
+      <parameters>$(find quadruped_gazebo)/config/ros2_control.yaml</parameters>
       <ros>
         <namespace>/</namespace>
       </ros>

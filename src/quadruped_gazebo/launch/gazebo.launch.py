@@ -3,7 +3,7 @@ Launch file for quadruped robot — ROS 2 Jazzy + Gazebo Harmonic (gz-sim)
 
 
 Usage:
-    ros2 launch mechdog_gazebo gazebo.launch.py
+    ros2 launch quadruped_gazebo gazebo.launch.py
 """
 
 import os
@@ -24,7 +24,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    pkg_name = "mechdog_gazebo"
+    pkg_name = "quadruped_gazebo"
     pkg_share = get_package_share_directory(pkg_name)
 
     # Resolve world path at launch-description build time (plain Python string)
