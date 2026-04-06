@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  depth_image_proc:
+    image: depth-image-proc:jazzy
+    container_name: depth_image_proc
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Topic remapping
+      - DEPTH_IMAGE_TOPIC=${DEPTH_IMAGE_TOPIC:-/depth_camera/depth/image_raw}
+      - CAMERA_INFO_TOPIC=${CAMERA_INFO_TOPIC:-/depth_camera/depth/camera_info}
+      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/points}
+
+    volumes:
+      # Your ROS2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        ros2 run depth_image_proc point_cloud_xyz_node \
+          --ros-args \
+          -r depth/image_raw:=$${DEPTH_IMAGE_TOPIC} \
+          -r depth/camera_info:=$${CAMERA_INFO_TOPIC} \
+          -r points:=$${POINTCLOUD_TOPIC}
+      "
