@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  quadruped_gait_controller:
+    image: quadruped-gait-controller:jazzy
+    container_name: quadruped_gait_controller
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        colcon build --symlink-install --packages-select quadruped_gait_controller;
+        source /work/ws/install/setup.bash;
+        ros2 launch quadruped_gait_controller gait.launch.py
+      "
