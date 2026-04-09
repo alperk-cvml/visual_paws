@@ -81,11 +81,15 @@ def leg_ik(foot_x: float, foot_y: float, foot_z: float,
     # Hip roll (abduction) — coronal plane
     dy = foot_y - y_sign * HIP_Y_OFFSET
     dz = foot_z                             # negative (foot below hip)
-    hip_roll = math.atan2(dy, -dz)
-
+    
     # Effective leg-chain reach after removing the fixed HIP_LENGTH offset
     r_coronal = math.sqrt(dy**2 + dz**2)
     r_chain = math.sqrt(max(r_coronal**2 - HIP_LENGTH**2, 0.0))
+    
+    # hip_roll incorporates the offset created by HIP_LENGTH
+    hip_roll = math.atan2(dy, -dz) - math.atan2(y_sign * HIP_LENGTH, r_chain)
+
+
 
     # Sagittal-plane 2-link IK (thigh=L1, calf=L2)
     r = math.sqrt(foot_x**2 + r_chain**2)
@@ -128,10 +132,13 @@ class GaitNode(Node):
         self._phase_vel = 1.0 / STRIDE_PERIOD
         self._timer = self.create_timer(dt, self._tick)
 
-        # Pre-compute nominal standing foot position (body frame)
+        # Pre-compute nominal standing foot position (relative to hip)
         z_stand = -(L1 * math.cos(STAND_HIP_PITCH) +
-                    L2 * math.cos(STAND_HIP_PITCH + abs(STAND_KNEE)))
+                    L2 * math.cos(STAND_HIP_PITCH + STAND_KNEE))
+        x_stand = L1 * math.sin(STAND_HIP_PITCH) + \
+                  L2 * math.sin(STAND_HIP_PITCH + STAND_KNEE)
         self._z_stand = z_stand
+        self._x_stand = x_stand
 
         self.get_logger().info(
             '\n'
@@ -189,8 +196,8 @@ class GaitNode(Node):
                 foot_y_off = step_y * (0.5 - t)
                 lift       = 0.0
 
-            # Nominal foot position in body frame
-            nom_x = x_sign * HIP_X_OFFSET
+            # Nominal foot position relative to hip in X, and relative to body center in Y/Z 
+            nom_x = self._x_stand
             nom_y = y_sign * (HIP_Y_OFFSET + HIP_LENGTH)
             nom_z = self._z_stand
 
