@@ -160,6 +160,15 @@ def generate_launch_description():
         output="screen",
     )
 
+    # ── Static TF from Gazebo model to base_link ──────────────────
+    link_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="static_transform_publisher_bridge",
+        arguments=["0", "0", "0", "0", "0", "0", "quadruped/base_link", "base_link"],
+        output="screen",
+    )
+
     return LaunchDescription(
         [
         declare_sim_time,
@@ -172,6 +181,7 @@ def generate_launch_description():
         bridge,
         load_after_spawn,
         load_joint_after_broadcaster,
+        link_tf,
         rviz,
         ]
     )
