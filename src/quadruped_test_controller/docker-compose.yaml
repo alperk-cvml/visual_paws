@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  quadruped_test_controller:
+    image: quadruped-test-controller:jazzy
+    container_name: quadruped_test_controller
+    # Required: keep stdin/TTY open so pynput can capture keyboard input
+    stdin_open: true
+    tty: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+    volumes:
+      # ROS 2 workspace (packages live under src/)
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        colcon build --symlink-install --packages-select quadruped_test_controller;
+        source /work/ws/install/setup.bash;
+        ros2 run quadruped_test_controller keyboard_controller
+      "
