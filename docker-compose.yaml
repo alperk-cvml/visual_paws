@@ -1,0 +1,15 @@
+# Root compose file — delegates to each module's own docker-compose.yaml.
+# Requires Docker Compose v2.20+ (compose-spec `include` support).
+#
+# Usage (from repo root):
+#   docker compose up --build
+#   docker compose up quadruped_gazebo depth_image_proc   # start a subset
+#
+# To override any variable, set it in the environment or in a .env file.
+
+include:
+  - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/dept_image_proc/docker-compose.yaml
+  - path: src/elevation_mapping/docker-compose.yaml
+  - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_test_controller/docker-compose.yaml
