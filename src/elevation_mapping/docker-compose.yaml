@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  elevation_mapping:
+    image: elevation-mapping:jazzy
+    container_name: elevation_mapping
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Input — point cloud produced by dept_image_proc
+      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/depth_image/points}
+
+      # Coordinate frames
+      - MAP_FRAME_ID=${MAP_FRAME_ID:-odom}
+      - SENSOR_FRAME_ID=${SENSOR_FRAME_ID:-depth_camera_link}
+
+      # Map geometry
+      - MAP_LENGTH_X=${MAP_LENGTH_X:-3.0}
+      - MAP_LENGTH_Y=${MAP_LENGTH_Y:-3.0}
+      - MAP_RESOLUTION=${MAP_RESOLUTION:-0.05}
+
+      # Publish rate (Hz)
+      - PUBLISH_RATE=${PUBLISH_RATE:-2.0}
+
+    volumes:
+      # Your ROS2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/jazzy/setup.bash;
+        cd /work/ws;
+        colcon build --symlink-install --packages-select simple_elevation_mapping;
+        source /work/ws/install/setup.bash;
+        ros2 run simple_elevation_mapping elevation_mapping_node \
+          --ros-args \
+          -p use_sim_time:=true \
+          -p input_pointcloud_topic:=$${POINTCLOUD_TOPIC} \
+          -p map_frame_id:=$${MAP_FRAME_ID} \
+          -p sensor_frame_id:=$${SENSOR_FRAME_ID} \
+          -p length_x:=$${MAP_LENGTH_X} \
+          -p length_y:=$${MAP_LENGTH_Y} \
+          -p resolution:=$${MAP_RESOLUTION} \
+          -p publish_rate:=$${PUBLISH_RATE}
+      "

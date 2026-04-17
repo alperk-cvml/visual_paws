@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-ros2-controllers \
     ros-${ROS_DISTRO}-controller-manager \
     ros-${ROS_DISTRO}-gz-ros2-control \
+    ros-${ROS_DISTRO}-grid-map \
+    ros-${ROS_DISTRO}-grid-map-ros \
+    ros-${ROS_DISTRO}-grid-map-rviz-plugin \
     python3-colcon-common-extensions \
     mesa-utils \
     && rm -rf /var/lib/apt/lists/*

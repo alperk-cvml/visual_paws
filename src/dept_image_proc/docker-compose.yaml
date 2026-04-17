@@ -38,5 +38,6 @@ services:
           --ros-args \
           -r depth/image_raw:=$${DEPTH_IMAGE_TOPIC} \
           -r depth/camera_info:=$${CAMERA_INFO_TOPIC} \
-          -r points:=$${POINTCLOUD_TOPIC}
+          -r points:=$${POINTCLOUD_TOPIC} \
+          -p use_sim_time:=true
       "
