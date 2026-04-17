@@ -11,6 +11,7 @@ Panels:
         - /TF1
         - /PointCloud21
         - /PointCloud21/Topic1
+        - /GridMap1
       Splitter Ratio: 0.5
     Tree Height: 481
   - Class: rviz_common/Selection
@@ -187,31 +188,6 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Tree:
-        base_link:
-          FL_hip_link:
-            FL_thigh_link:
-              FL_calf_link:
-                FL_foot_link:
-                  {}
-          FR_hip_link:
-            FR_thigh_link:
-              FR_calf_link:
-                FR_foot_link:
-                  {}
-          RL_hip_link:
-            RL_thigh_link:
-              RL_calf_link:
-                RL_foot_link:
-                  {}
-          RR_hip_link:
-            RR_thigh_link:
-              RR_calf_link:
-                RR_foot_link:
-                  {}
-          camera_link:
-            {}
-          imu_link:
-            {}
         quadruped_world:
           quadruped:
             quadruped/FL_calf_link:
@@ -239,7 +215,31 @@ Visualization Manager:
             quadruped/RR_thigh_link:
               {}
             quadruped/base_link:
-              {}
+              base_link:
+                FL_hip_link:
+                  FL_thigh_link:
+                    FL_calf_link:
+                      FL_foot_link:
+                        {}
+                FR_hip_link:
+                  FR_thigh_link:
+                    FR_calf_link:
+                      FR_foot_link:
+                        {}
+                RL_hip_link:
+                  RL_thigh_link:
+                    RL_calf_link:
+                      RL_foot_link:
+                        {}
+                RR_hip_link:
+                  RR_thigh_link:
+                    RR_calf_link:
+                      RR_foot_link:
+                        {}
+                camera_link:
+                  {}
+                imu_link:
+                  {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -274,6 +274,32 @@ Visualization Manager:
         Value: /depth_camera/depth_image/points
       Use Fixed Frame: true
       Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: grid_map_rviz_plugin/GridMap
+      Color: 200; 200; 200
+      Color Layer: elevation
+      Color Transformer: GridMapLayer
+      Enabled: true
+      Height Layer: elevation
+      Height Transformer: GridMapLayer
+      History Length: 1
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 10
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: GridMap
+      Show Grid Lines: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /elevation_mapping/elevation_map
+      Use Rainbow: true
       Value: true
   Enabled: true
   Global Options:
@@ -321,7 +347,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/ThirdPersonFollower
-      Distance: 1.321004033088684
+      Distance: 1.7260830402374268
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1

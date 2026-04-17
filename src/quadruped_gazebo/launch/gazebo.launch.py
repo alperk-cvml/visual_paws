@@ -105,11 +105,9 @@ def generate_launch_description():
             "/depth_camera/depth_image/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             "/model/quadruped/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
-            "/model/quadruped/pose_static@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
         ],
         remappings=[
             ("/model/quadruped/pose", "/tf"),
-            ("/model/quadruped/pose_static", "/tf_static"),
         ],
         output="screen",
     )
@@ -169,6 +167,15 @@ def generate_launch_description():
         output="screen",
     )
 
+    # ── Temporary Static TF from quadruped_world to odom ────────────────────
+    odom_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="static_transform_publisher_odom",
+        arguments=["0", "0", "0", "0", "0", "0", "quadruped_world", "odom"],
+        output="screen",
+    )
+
     return LaunchDescription(
         [
         declare_sim_time,
@@ -182,6 +189,7 @@ def generate_launch_description():
         load_after_spawn,
         load_joint_after_broadcaster,
         link_tf,
+        odom_tf,
         rviz,
         ]
     )
