@@ -28,13 +28,16 @@ from geometry_msgs.msg import Twist
 # Velocity constants
 LINEAR_SPEED = 0.3   # m/s forward / backward
 LATERAL_SPEED = 0.2  # m/s strafing
+ANGULAR_SPEED = 1.0  # rad/s turning
 PUBLISH_RATE_HZ = 20
 
 KEY_MAP = {
-    'w': ( LINEAR_SPEED,  0.0),
-    's': (-LINEAR_SPEED,  0.0),
-    'a': (0.0,  LATERAL_SPEED),
-    'd': (0.0, -LATERAL_SPEED),
+    'w': ( LINEAR_SPEED,  0.0, 0.0),
+    's': (-LINEAR_SPEED,  0.0, 0.0),
+    'a': (0.0,  LATERAL_SPEED, 0.0),
+    'd': (0.0, -LATERAL_SPEED, 0.0),
+    'q': (0.0, 0.0,  ANGULAR_SPEED),
+    'e': (0.0, 0.0, -ANGULAR_SPEED),
 }
 
 
@@ -59,6 +62,7 @@ class KeyboardControllerNode(Node):
 
         self._linear_x = 0.0
         self._linear_y = 0.0
+        self._angular_z = 0.0
         self._lock = threading.Lock()
         self._running = True
 
@@ -71,7 +75,9 @@ class KeyboardControllerNode(Node):
             "  S - Backward\n"
             "  A - Strafe Left\n"
             "  D - Strafe Right\n"
-            "  Q / ESC / Ctrl+C - Quit\n"
+            "  Q - Turn Left\n"
+            "  E - Turn Right\n"
+            "  ESC / Ctrl+C - Quit\n"
             "==========================================\n"
             "  Publishing to: /cmd_vel\n"
             "  Keep this terminal focused!\n"
@@ -107,28 +113,31 @@ class KeyboardControllerNode(Node):
                         with self._lock:
                             self._linear_x = 0.0
                             self._linear_y = 0.0
+                            self._angular_z = 0.0
                         prev_key = None
                     continue
 
                 key_lower = key.lower()
 
                 # Quit conditions
-                if key_lower == 'q' or key == '\x1b' or key == '\x03':
+                if key == '\x1b' or key == '\x03':
                     self.get_logger().info('Quit key pressed — shutting down.')
                     self._running = False
                     rclpy.shutdown()
                     break
 
                 if key_lower in KEY_MAP:
-                    lx, ly = KEY_MAP[key_lower]
+                    lx, ly, az = KEY_MAP[key_lower]
                     with self._lock:
                         self._linear_x = lx
                         self._linear_y = ly
+                        self._angular_z = az
                     prev_key = key_lower
                 else:
                     with self._lock:
                         self._linear_x = 0.0
                         self._linear_y = 0.0
+                        self._angular_z = 0.0
                     prev_key = None
 
         except Exception as e:
@@ -141,6 +150,7 @@ class KeyboardControllerNode(Node):
         with self._lock:
             msg.linear.x = self._linear_x
             msg.linear.y = self._linear_y
+            msg.angular.z = self._angular_z
         self._pub.publish(msg)
 
 
