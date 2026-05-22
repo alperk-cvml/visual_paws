@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  nav2_mppi_navigation:
+    image: nav2-mppi-navigation:jazzy
+    container_name: nav2_mppi_navigation
+    pull_policy: build    # always build locally — image is not on any registry
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Nav2 tuning (override via .env)
+      - MAP_FRAME=${MAP_FRAME:-map}
+      - ODOM_FRAME=${ODOM_FRAME:-odom}
+      - BASE_FRAME=${BASE_FRAME:-base_link}
+      - OCCUPANCY_GRID_TOPIC=${OCCUPANCY_GRID_TOPIC:-/occupancy_grid}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+
+    volumes:
+      # Shared ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery
+    network_mode: host
+    ipc: host
+
+    command: |
+      bash -lc "
+        set -e;
+        source /opt/ros/jazzy/setup.bash;
+        cd /work/ws;
+        colcon build --symlink-install --packages-select nav2_mppi_navigation;
+        source /work/ws/install/setup.bash;
+        ros2 launch nav2_mppi_navigation nav2_mppi.launch.py \
+          map_frame:=$${MAP_FRAME} \
+          odom_frame:=$${ODOM_FRAME} \
+          base_frame:=$${BASE_FRAME} \
+          occupancy_grid_topic:=$${OCCUPANCY_GRID_TOPIC} \
+          use_sim_time:=$${USE_SIM_TIME}
+      "

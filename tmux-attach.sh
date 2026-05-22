@@ -16,6 +16,7 @@ CONTAINERS=(
   depth_image_proc
  # elevation_mapping
   elevation_mapping_cupy
+  nav2_mppi_navigation
   quadruped_gait_controller
   quadruped_test_controller
 )
