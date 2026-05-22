@@ -1,0 +1,121 @@
+/**:
+  ros__parameters:
+    # One pointcloud input
+    subscribers:
+      depth:
+        topic_name: "/camera/depth/points"
+        data_type: "pointcloud"
+
+    enable_drift_compensation: false
+
+
+    # Single output topic
+    publishers:
+      elevation_map:
+        layers: ["elevation", "variance", "traversability"]
+        basic_layers: ["elevation"]
+        fps: 10.0
+
+    # min_filter fills in minimum value around the invalid cell.
+    min_filter:                                   
+      enable: True                                # weather to load this plugin
+      fill_nan: False                             # Fill nans to invalid cells of elevation layer.
+      is_height_layer: True                       # If this is a height layer (such as elevation) or not (such as traversability)
+      layer_name: "min_filter"                    # The layer name.
+      extra_params:                               # This params are passed to the plugin class on initialization.
+        dilation_size: 1                         # The patch size to apply
+        iteration_n: 30                           # The number of iterations
+    # Apply smoothing.
+    smooth_filter:
+      enable: True
+      fill_nan: False
+      is_height_layer: True
+      layer_name: "smooth"
+      extra_params:
+        input_layer_name: "min_filter"
+    # Apply inpainting using opencv
+    inpainting:
+      enable: True
+      fill_nan: False
+      is_height_layer: True
+      layer_name: "inpaint"
+      extra_params:
+        method: "telea"                           # telea or ns
+    # Apply smoothing for inpainted layer
+    erosion:
+      enable: True
+      fill_nan: False
+      is_height_layer: False
+      layer_name: "erosion"
+      extra_params:
+        input_layer_name: "traversability"
+        dilation_size: 3
+        iteration_n: 20
+        reverse: True
+
+    base_frame: base_link
+    checker_layer: elevation
+    cleanup_cos_thresh: 0.1
+    cleanup_step: 0.1
+    corrected_map_frame: odom
+    dilation_size: 3
+    dilation_size_initialize: 2
+    drift_compensation_alpha: 0.1
+    drift_compensation_variance_inlier: 0.1
+    enable_drift_compensation: false
+    enable_drift_corrected_TF_publishing: false
+    enable_edge_sharpen: true
+    enable_normal_arrow_publishing: false
+    enable_overlap_clearance: true
+    enable_pointcloud_publishing: false
+    enable_visibility_cleanup: true
+    initial_variance: 1000.0
+    initialize_frame_id:
+    - base_link
+    initialize_method: linear
+    initialize_tf_grid_size: 1.0
+    initialize_tf_offset:
+    - 0.0
+    initialized_variance: 10.0
+    mahalanobis_thresh: 2.0
+    map_acquire_fps: 5.0
+    map_frame: odom
+    map_length: 20.0
+    masked_replace_service_mask_layer_name: mask
+    max_drift: 0.1
+    max_height_range: 10.5
+    max_ray_length: 10.0
+    max_unsafe_n: 10
+    max_variance: 100.0
+    min_height_drift_cnt: 100
+    min_valid_distance: 0.1
+    orientation_lowpass_alpha: 0.2
+    orientation_noise_thresh: 0.01
+    outlier_variance: 0.01
+    overlap_clear_range_xy: 4.0
+    overlap_clear_range_z: 2.0
+    position_lowpass_alpha: 0.2
+    position_noise_thresh: 0.01
+    publish_statistics_fps: 1.0
+    ramped_height_range_a: 0.3
+    ramped_height_range_b: 1.0
+    ramped_height_range_c: 0.2
+    recordable_fps: 3.0
+    resolution: 0.1
+    safe_min_thresh: 0.4
+    safe_thresh: 0.7
+    save_map_default_topic: elevation_map
+    save_map_storage_id: mcap
+    sensor_noise_factor: 0.05
+    service_namespace: /elevation_mapping_cupy
+    start_type_description_service: true
+    time_interval: 0.1
+    time_variance: 0.0001
+    traversability_inlier: 0.9
+    update_pose_fps: 10.0
+    update_variance_fps: 5.0
+    use_chainer: false
+    use_initializer_at_start: true
+    use_only_above_for_upper_bound: false
+    use_sim_time: false
+    wall_num_thresh: 20

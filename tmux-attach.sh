@@ -14,7 +14,8 @@
 CONTAINERS=(
   quadruped_gazebo
   depth_image_proc
-  elevation_mapping
+ # elevation_mapping
+  elevation_mapping_cupy
   quadruped_gait_controller
   quadruped_test_controller
 )
