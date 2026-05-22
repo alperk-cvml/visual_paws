@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  elevation_mapping_cupy:
+    image: elevation-mapping-cupy:jazzy
+    container_name: elevation_mapping_cupy
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    runtime: nvidia
+    environment:
+      # NVIDIA
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Input — point cloud
+      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/depth_image/points}
+
+      # Coordinate frames
+      - MAP_FRAME_ID=${MAP_FRAME_ID:-odom}
+      - SENSOR_FRAME_ID=${SENSOR_FRAME_ID:-camera_link}
+
+      # Map geometry
+      - MAP_LENGTH_X=${MAP_LENGTH_X:-3.0}
+      - MAP_LENGTH_Y=${MAP_LENGTH_Y:-3.0}
+      - MAP_RESOLUTION=${MAP_RESOLUTION:-0.05}
+
+      # Publish rate (Hz)
+      - PUBLISH_RATE=${PUBLISH_RATE:-2.0}
+
+    volumes:
+      # Your ROS2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: |
+      bash -lc "
+        set -e;
+        source /opt/ros/jazzy/setup.bash;
+        cd /work/ws;
+        colcon build --symlink-install --packages-select elevation_map_msgs elevation_mapping_cupy simple_elevation_mapping_cupy;
+        source /work/ws/install/setup.bash;
+        ros2 launch simple_elevation_mapping_cupy elevation_mapping.launch.py \
+          input_pointcloud_topic:=$${POINTCLOUD_TOPIC} \
+          map_frame_id:=$${MAP_FRAME_ID} \
+          sensor_frame_id:=$${SENSOR_FRAME_ID}
+      "
