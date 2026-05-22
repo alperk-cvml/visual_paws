@@ -43,9 +43,9 @@ STAND_KNEE      = -1.2
 
 # ── Gait parameters ─────────────────────────────────────────────────────────
 STRIDE_PERIOD   = 0.4    # seconds per full stride
-STEP_HEIGHT     = 0.03   # metres — swing foot lift
-MAX_STEP_LENGTH = 0.04   # metres — stride length at max cmd_vel
-MAX_LATERAL     = 0.02   # metres — lateral step at max cmd_vel
+STEP_HEIGHT     = 0.015  # metres — swing foot lift
+MAX_STEP_LENGTH = 0.08   # metres — maximum stride stroke
+MAX_LATERAL     = 0.04   # metres — maximum lateral stroke
 PUBLISH_RATE_HZ = 50     # Hz — control loop rate
 
 # ── Leg table ────────────────────────────────────────────────────────────────
@@ -124,8 +124,13 @@ class GaitNode(Node):
         )
         self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, 10)
 
+        self._cmd_vx = 0.0
+        self._cmd_vy = 0.0
+        self._cmd_omega = 0.0
+
         self._vx = 0.0
         self._vy = 0.0
+        self._omega = 0.0
 
         self._phase = 0.0
         dt = 1.0 / PUBLISH_RATE_HZ
@@ -153,29 +158,59 @@ class GaitNode(Node):
         )
 
     def _cmd_vel_cb(self, msg: Twist):
-        self._vx = float(msg.linear.x)
-        self._vy = float(msg.linear.y)
+        self._cmd_vx = float(msg.linear.x)
+        self._cmd_vy = float(msg.linear.y)
+        self._cmd_omega = float(msg.angular.z)
 
     def _tick(self):
-        moving = abs(self._vx) > 0.01 or abs(self._vy) > 0.01
-
-        if not moving:
-            self._phase = 0.0
-            self._publish_stand()
-            return
-
         dt = 1.0 / PUBLISH_RATE_HZ
+
+        # Smooth velocity with acceleration limits
+        dvx = self._cmd_vx - self._vx
+        dvy = self._cmd_vy - self._vy
+        domega = self._cmd_omega - self._omega
+
+        accel_x = 0.8  # m/s^2
+        accel_y = 0.8  # m/s^2
+        accel_w = 2.0  # rad/s^2
+
+        self._vx += max(-accel_x * dt, min(accel_x * dt, dvx))
+        self._vy += max(-accel_y * dt, min(accel_y * dt, dvy))
+        self._omega += max(-accel_w * dt, min(accel_w * dt, domega))
+
+        moving = abs(self._vx) > 0.001 or abs(self._vy) > 0.001 or abs(self._omega) > 0.001
+
+        if abs(self._cmd_vx) < 0.001 and abs(self._cmd_vy) < 0.001 and abs(self._cmd_omega) < 0.001:
+            if not moving:
+                self._phase = 0.0
+                self._publish_stand()
+                return
+
         self._phase = (self._phase + self._phase_vel * dt) % 1.0
 
-        step_x = self._vx * MAX_STEP_LENGTH
-        step_y = self._vy * MAX_LATERAL
-        self._publish_trot(step_x, step_y)
+        self._publish_trot()
 
-    def _compute_angles(self, step_x: float, step_y: float) -> list[float]:
+    def _compute_angles(self) -> list[float]:
         """Return flat list of 12 joint angles in LEGS order."""
         angles: list[float] = []
         for prefix in LEGS:
             x_sign, y_sign = LEG_SIGNS[prefix]
+
+            # True position of the foot relative to body center
+            body_x = x_sign * HIP_X_OFFSET + self._x_stand
+            body_y = y_sign * (HIP_Y_OFFSET + HIP_LENGTH)
+            
+            # Linear velocity required at the foot
+            v_x = self._vx - body_y * self._omega
+            v_y = self._vy + body_x * self._omega
+            
+            # Required stroke (amplitude)
+            leg_step_x = v_x * (STRIDE_PERIOD / 2.0)
+            leg_step_y = v_y * (STRIDE_PERIOD / 2.0)
+            
+            # Cap the stroke to avoid IK failure
+            leg_step_x = max(-MAX_STEP_LENGTH, min(MAX_STEP_LENGTH, leg_step_x))
+            leg_step_y = max(-MAX_LATERAL, min(MAX_LATERAL, leg_step_y))
 
             # Local phase: A-pair starts at 0, B-pair offset by 0.5
             if prefix in SWING_A:
@@ -187,13 +222,13 @@ class GaitNode(Node):
 
             if in_swing:
                 t = leg_phase / 0.5          # 0→1
-                foot_x_off = step_x * (t - 0.5)
-                foot_y_off = step_y * (t - 0.5)
+                foot_x_off = leg_step_x * (t - 0.5)
+                foot_y_off = leg_step_y * (t - 0.5)
                 lift       = STEP_HEIGHT * math.sin(math.pi * t)
             else:
                 t = (leg_phase - 0.5) / 0.5  # 0→1
-                foot_x_off = step_x * (0.5 - t)
-                foot_y_off = step_y * (0.5 - t)
+                foot_x_off = leg_step_x * (0.5 - t)
+                foot_y_off = leg_step_y * (0.5 - t)
                 lift       = 0.0
 
             # Nominal foot position relative to hip in X, and relative to body center in Y/Z 
@@ -210,9 +245,9 @@ class GaitNode(Node):
             angles += [hr, hp, kn]
         return angles
 
-    def _publish_trot(self, step_x: float, step_y: float):
+    def _publish_trot(self):
         msg = Float64MultiArray()
-        msg.data = self._compute_angles(step_x, step_y)
+        msg.data = self._compute_angles()
         self._pub.publish(msg)
 
     def _publish_stand(self):
