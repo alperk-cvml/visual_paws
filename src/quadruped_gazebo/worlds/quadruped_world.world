@@ -94,6 +94,30 @@
       </link>
     </model>
 
+    <!-- Large obstacle for testing occupancy mapping -->
+    <model name="large_obstacle">
+      <static>true</static>
+      <pose>1.5 0 1.025 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>1.0 1.0 1.0</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.3 1.0 0.05</size></box>
+          </geometry>
+          <material>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Wood</name>
+            </script>
+          </material>
+        </visual>
+      </link>
+    </model>
+
     <!-- GUI camera setup -->
     <gui fullscreen="0">
       <camera name="user_camera">
