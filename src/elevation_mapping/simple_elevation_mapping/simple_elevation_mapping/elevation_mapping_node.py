@@ -71,7 +71,7 @@ class ElevationMappingNode(Node):
         # ── Parameters ───────────────────────────────────────────────────────
         self.declare_parameter('input_pointcloud_topic', '/depth_camera/depth_image/points')
         self.declare_parameter('map_frame_id', 'odom')
-        self.declare_parameter('sensor_frame_id', 'depth_camera_link')
+        self.declare_parameter('sensor_frame_id', 'camera_link')
         self.declare_parameter('length_x', 3.0)       # metres
         self.declare_parameter('length_y', 3.0)       # metres
         self.declare_parameter('resolution', 0.05)    # metres/cell
@@ -152,7 +152,8 @@ class ElevationMappingNode(Node):
             tf_stamped = self._tf_buffer.lookup_transform(
                 self.map_frame,
                 msg.header.frame_id,
-                rclpy.time.Time()
+                msg.header.stamp,
+                timeout=rclpy.duration.Duration(seconds=0.1)
             )
         except TransformException as ex:
             self.get_logger().warn(
