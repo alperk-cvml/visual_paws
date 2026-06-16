@@ -176,6 +176,15 @@ def generate_launch_description():
         output="screen",
     )
 
+    # ── Temporary Static TF from quadruped_world to odom ────────────────────
+    map_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="static_transform_publisher_map",
+        arguments=["0", "0", "0", "0", "0", "0", "odom", "map"],
+        output="screen",
+    )
+
     return LaunchDescription(
         [
         declare_sim_time,
@@ -190,6 +199,7 @@ def generate_launch_description():
         load_joint_after_broadcaster,
         link_tf,
         odom_tf,
+        map_tf,
         rviz,
         ]
     )
