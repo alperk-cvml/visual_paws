@@ -41,18 +41,6 @@ def generate_launch_description():
 
     params_file = os.path.join(pkg_share, 'config', 'nav2_mppi_params.yaml')
 
-    # ── Fake localisation: static map → odom TF ──────────────────────────
-    # This makes map == odom for simulation purposes.
-    fake_localization = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='map_to_odom_publisher',
-        arguments=['0', '0', '0', '0', '0', '0',
-                   LaunchConfiguration('map_frame'),
-                   LaunchConfiguration('odom_frame')],
-        output='screen',
-    )
-
     # ── Nav2 navigation stack (no map_server; costmap reads /occupancy_grid) ─
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -63,6 +51,7 @@ def generate_launch_description():
             'params_file': params_file,
             'use_composition': 'False',
             'use_respawn': 'False',
+            'use_collision_monitor': 'False',
         }.items(),
     )
 
@@ -72,6 +61,5 @@ def generate_launch_description():
         declare_odom_frame,
         declare_base_frame,
         declare_occ_topic,
-        fake_localization,
         nav2_launch,
     ])
