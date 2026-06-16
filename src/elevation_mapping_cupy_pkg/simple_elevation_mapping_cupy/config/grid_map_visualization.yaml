@@ -1,5 +1,6 @@
 grid_map_visualization:
   ros__parameters:
+    use_sim_time: true
     grid_map_topic: /elevation_mapping_node/elevation_map
     publish_rate: 10.0
 
