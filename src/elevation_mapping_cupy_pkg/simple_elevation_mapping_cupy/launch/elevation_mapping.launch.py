@@ -38,6 +38,7 @@ def generate_launch_description():
                 'map_frame': LaunchConfiguration('map_frame_id'),
                 'base_frame': LaunchConfiguration('base_frame_id'),
                 'corrected_map_frame': LaunchConfiguration('map_frame_id'),
+                'use_sim_time': True,
             }
         ],
         remappings=[
@@ -52,7 +53,10 @@ def generate_launch_description():
         executable='grid_map_visualization',
         name='grid_map_visualization',
         output='screen',
-        parameters=[grid_map_vis_config]
+        parameters=[
+            grid_map_vis_config,
+            {'use_sim_time': True}
+        ]
     )
 
     return LaunchDescription([

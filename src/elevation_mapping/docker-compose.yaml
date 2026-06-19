@@ -20,7 +20,7 @@ services:
 
       # Coordinate frames
       - MAP_FRAME_ID=${MAP_FRAME_ID:-odom}
-      - SENSOR_FRAME_ID=${SENSOR_FRAME_ID:-depth_camera_link}
+      - SENSOR_FRAME_ID=${SENSOR_FRAME_ID:-camera_link}
 
       # Map geometry
       - MAP_LENGTH_X=${MAP_LENGTH_X:-3.0}
