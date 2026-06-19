@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  localization:
+    image: localization:jazzy
+    container_name: localization
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Topic configuration (override for real hardware)
+      - RGB_TOPIC=${RGB_TOPIC:-/camera/image_raw}
+      - DEPTH_TOPIC=${DEPTH_TOPIC:-/depth_camera/depth_image}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        export LD_LIBRARY_PATH=/opt/ORB_SLAM3/lib:/opt/ORB_SLAM3/Thirdparty/DBoW2/lib:/opt/ORB_SLAM3/Thirdparty/g2o/lib:$${LD_LIBRARY_PATH};
+        colcon build --symlink-install --packages-select localization;
+        source /work/ws/install/setup.bash;
+        ros2 launch localization localization.launch.py
+          rgb_topic:=$${RGB_TOPIC}
+          depth_topic:=$${DEPTH_TOPIC}
+          use_sim_time:=$${USE_SIM_TIME}
+      "
