@@ -28,6 +28,7 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -37,7 +38,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
@@ -300,15 +301,6 @@ private:
             tf_broadcaster_->sendTransform(tf_msg);
         }
 
-        // ── Publish tracking debug image ────────────────────────────────
-        if (tracking_img_pub_->get_subscription_count() > 0) {
-            cv::Mat tracked_frame = slam_system_->GetCurrentFrame();
-            if (!tracked_frame.empty()) {
-                auto img_msg = cv_bridge::CvImage(
-                    rgb_msg->header, "bgr8", tracked_frame).toImageMsg();
-                tracking_img_pub_->publish(*img_msg);
-            }
-        }
     }
 
     // ── Periodic stats logging ──────────────────────────────────────────
@@ -323,13 +315,13 @@ private:
         double track_rate = static_cast<double>(tracked_frames_) /
                             static_cast<double>(total_frames_) * 100.0;
         int num_map_points = slam_system_->GetTrackedMapPoints().size();
-        int num_keyframes = slam_system_->GetAllKeyFrames().size();
+        int num_keypoints = slam_system_->GetTrackedKeyPointsUn().size();
 
         RCLCPP_INFO(this->get_logger(),
             "ORB-SLAM3 stats | frames: %lu  tracked: %.1f%%  "
-            "map_points: %d  keyframes: %d  lost: %lu",
+            "map_points: %d  keypoints: %d  lost: %lu",
             total_frames_, track_rate, num_map_points,
-            num_keyframes, lost_frames_);
+            num_keypoints, lost_frames_);
     }
 
     // ── Member variables ────────────────────────────────────────────────

@@ -65,7 +65,7 @@ services:
       bash -lc "
         set -e;
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
-        colcon build --symlink-install;
+        colcon build --symlink-install --packages-ignore localization monocular_depth;
         source /work/ws/install/setup.bash;
         ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS}
       "

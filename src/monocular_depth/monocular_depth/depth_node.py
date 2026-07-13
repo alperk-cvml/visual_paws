@@ -107,6 +107,12 @@ class DepthNode(Node):
     # ──────────────────────────────────────────────────────────────────────
     def _load_model(self, model_path: str):
         """Load the Depth Anything V2 metric depth model."""
+        import sys
+        # Ensure the metric_depth variant is imported (it has max_depth support).
+        # The base repo's depth_anything_v2.dpt does NOT accept max_depth.
+        metric_path = '/opt/depth_anything_v2/metric_depth'
+        if metric_path not in sys.path:
+            sys.path.insert(0, metric_path)
         from depth_anything_v2.dpt import DepthAnythingV2
 
         # Model configs per encoder variant

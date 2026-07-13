@@ -21,6 +21,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(message_filters REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 # ── Find ORB-SLAM3 dependencies ─────────────────────────────────────────
 find_package(OpenCV REQUIRED)
@@ -30,6 +31,7 @@ find_package(Pangolin QUIET)  # Optional — only needed if viewer is enabled
 # ── ORB-SLAM3 library (built at /opt/ORB_SLAM3) ─────────────────────────
 set(ORB_SLAM3_ROOT "/opt/ORB_SLAM3")
 set(ORB_SLAM3_INCLUDE_DIRS
+  ${ORB_SLAM3_ROOT}
   ${ORB_SLAM3_ROOT}/include
   ${ORB_SLAM3_ROOT}/include/CameraModels
   ${ORB_SLAM3_ROOT}/Thirdparty/Sophus
@@ -92,6 +94,7 @@ ament_target_dependencies(orbslam3_rgbd_node
   cv_bridge
   image_transport
   message_filters
+  ament_index_cpp
 )
 
 # ── Install ──────────────────────────────────────────────────────────────

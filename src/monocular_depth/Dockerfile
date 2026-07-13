@@ -43,6 +43,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
       ros-${ROS_DISTRO}-cv-bridge \
       ros-${ROS_DISTRO}-image-transport \
+      ros-${ROS_DISTRO}-rqt-image-view \
       python3-colcon-common-extensions \
       python3-opencv \
     && rm -rf /var/lib/apt/lists/*
@@ -53,10 +54,11 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
     torch torchvision
 
 # ── Depth Anything V2 ────────────────────────────────────────────────────
-# Clone the official repo for the model definition code
-RUN git clone --depth 1 https://github.com/DepthAnything/Depth-Anything-V2.git /opt/depth_anything_v2 \
-    && cd /opt/depth_anything_v2 \
-    && python3 -m pip install --no-cache-dir --break-system-packages -e .
+# Clone the official repo for the model definition code.
+# The repo has no setup.py/pyproject.toml — just add it to PYTHONPATH.
+# The metric depth class (with max_depth support) lives under metric_depth/.
+RUN git clone --depth 1 https://github.com/DepthAnything/Depth-Anything-V2.git /opt/depth_anything_v2
+ENV PYTHONPATH="/opt/depth_anything_v2/metric_depth:${PYTHONPATH}"
 
 # ── Download metric depth weights at build time ──────────────────────────
 # Outdoor (Virtual KITTI) model — max_depth=80m

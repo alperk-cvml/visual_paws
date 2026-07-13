@@ -16,9 +16,11 @@ services:
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
 
       # Video camera parameters
-      - VIDEO_PATH=${VIDEO_PATH:-/videos/input.mp4}
+      - VIDEO_PATH=${VIDEO_PATH:-/work/ws/videos/INPUT.MOV}
       - VIDEO_FPS=${VIDEO_FPS:-10.0}
       - VIDEO_LOOP=${VIDEO_LOOP:-true}
+      - WIDTH=${WIDTH:-640}
+      - HEIGHT=${HEIGHT:-480}
       - IMAGE_TOPIC=${IMAGE_TOPIC:-/camera/image_raw}
       - CAMERA_INFO_TOPIC=${CAMERA_INFO_TOPIC:-/camera/camera_info}
       - FRAME_ID=${FRAME_ID:-camera_link_optical}
@@ -45,15 +47,5 @@ services:
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
         colcon build --symlink-install --packages-select video_camera_sim;
         source /work/ws/install/setup.bash;
-        ros2 launch video_camera_sim video_camera.launch.py
-          video_path:=$${VIDEO_PATH}
-          fps:=$${VIDEO_FPS}
-          loop:=$${VIDEO_LOOP}
-          image_topic:=$${IMAGE_TOPIC}
-          camera_info_topic:=$${CAMERA_INFO_TOPIC}
-          frame_id:=$${FRAME_ID}
-          fx:=$${FX}
-          fy:=$${FY}
-          cx:=$${CX}
-          cy:=$${CY}
+        ros2 launch video_camera_sim video_camera.launch.py video_path:=$${VIDEO_PATH} fps:=$${VIDEO_FPS} loop:=$${VIDEO_LOOP} image_topic:=$${IMAGE_TOPIC} camera_info_topic:=$${CAMERA_INFO_TOPIC} frame_id:=$${FRAME_ID} fx:=$${FX} fy:=$${FY} cx:=$${CX} cy:=$${CY} width:=$${WIDTH} height:=$${HEIGHT}
       "

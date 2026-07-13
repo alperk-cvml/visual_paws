@@ -68,43 +68,48 @@ RUN git clone --depth 1 --branch v0.9.2 \
     && rm -rf /tmp/Pangolin
 
 # ── Build ORB-SLAM3 ─────────────────────────────────────────────────────
-# Use a community fork with Ubuntu 24.04 / C++17 compatibility patches
+# Use AeroTec-ATLAS fork — specifically maintained for Ubuntu 24.04 / GCC 13.
+# Additional sed patches for any remaining GCC 13 false positives.
 RUN git clone --depth 1 \
-      https://github.com/UZ-SLAMLab/ORB_SLAM3.git /opt/ORB_SLAM3 \
+      https://github.com/AeroTec-ATLAS/ORB-SLAM3-STEREO-FIXED-for-ubuntu-24.04-LTS.git \
+      /opt/ORB_SLAM3 \
     && cd /opt/ORB_SLAM3 \
-    # ── Apply Ubuntu 24.04 compatibility patches ────────────────────────
-    # Fix Eigen version requirement in bundled g2o
+    # ── Extra safety patches ────────────────────────────────────────────
+    # Suppress GCC 13 false-positive -Werror promotions in root CMakeLists
+    && sed -i 's|-Wall|-Wall -Wno-error|g' CMakeLists.txt \
+    # Suppress in bundled g2o CMakeLists as well
+    && sed -i 's|-Wall|-Wall -Wno-error|g' Thirdparty/g2o/CMakeLists.txt \
+    # Fix Eigen version requirement in bundled g2o (if not already fixed)
     && sed -i 's/FIND_PACKAGE(Eigen3 3.1.0 REQUIRED)/FIND_PACKAGE(Eigen3 REQUIRED)/' \
         Thirdparty/g2o/CMakeLists.txt \
-    # Fix C++17 compatibility: add <algorithm> header where needed
-    && find . -name "*.cc" -o -name "*.cpp" -o -name "*.h" | \
-        xargs grep -l "std::min\|std::max\|std::sort" | \
-        xargs sed -i '1s/^/#include <algorithm>\n/' 2>/dev/null || true \
-    # Fix potential issue with numeric_limits
-    && find . -name "*.cc" -o -name "*.cpp" -o -name "*.h" | \
-        xargs grep -l "std::numeric_limits" | \
-        xargs sed -i '1s/^/#include <limits>\n/' 2>/dev/null || true \
-    # Build DBoW2
+    # Fix C++17: bool++ is forbidden — replace with int flag (if not already fixed)
+    && sed -i 's/bMatch++;/bMatch = 1;/g' src/LoopClosing.cc 2>/dev/null || true \
+    # ── Build DBoW2 ─────────────────────────────────────────────────────
     && cd /opt/ORB_SLAM3/Thirdparty/DBoW2 \
     && mkdir -p build && cd build \
-    && cmake .. -DCMAKE_BUILD_TYPE=Release \
+    && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" \
     && make -j$(nproc) \
-    # Build g2o
+    # ── Build g2o ────────────────────────────────────────────────────────
     && cd /opt/ORB_SLAM3/Thirdparty/g2o \
     && mkdir -p build && cd build \
-    && cmake .. -DCMAKE_BUILD_TYPE=Release \
+    && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wno-error" \
     && make -j$(nproc) \
-    # Build Sophus (header-only, just configure)
+    # ── Build Sophus (header-only library — skip tests) ──────────────────
+    # GCC 13 triggers false-positive -Werror=array-bounds on SSE intrinsics
+    # in Sophus tests. Sophus is header-only so we only need cmake install.
     && cd /opt/ORB_SLAM3/Thirdparty/Sophus \
     && mkdir -p build && cd build \
-    && cmake .. -DCMAKE_BUILD_TYPE=Release \
-    && make -j$(nproc) || true \
-    # Build ORB-SLAM3 main library
+    && cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TESTS=OFF \
+        -DBUILD_EXAMPLES=OFF \
+    && make -j$(nproc) install || true \
+    # ── Build ORB-SLAM3 main library ─────────────────────────────────────
     && cd /opt/ORB_SLAM3 \
     && mkdir -p build && cd build \
     && cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_STANDARD=17 \
+        -DCMAKE_CXX_FLAGS="-O3 -Wno-error -Wno-deprecated-declarations -Wno-maybe-uninitialized -Wno-array-bounds" \
     && make -j$(nproc) \
     && ldconfig
 
