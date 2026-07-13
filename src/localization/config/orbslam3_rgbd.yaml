@@ -47,9 +47,11 @@ Camera.RGB: 0
 # Our depth is already in metres (float32), so factor = 1.0
 RGBD.DepthMapFactor: 1.0
 
-# Close/far point threshold for stereo/RGBD (× baseline)
-# Points farther than ThDepth×baseline are considered far points
-ThDepth: 40.0
+# Close/far threshold — required by ORB-SLAM3 even in RGB-D mode.
+# ThDepth × Stereo.b = close/far cutoff distance in metres.
+# With b=0.1 (nominal) and ThDepth=40 → 4.0 m cutoff.
+Stereo.ThDepth: 40.0
+Stereo.b: 0.1
 
 #--------------------------------------------------------------------------------------------
 # ORB Extractor Parameters
@@ -64,12 +66,12 @@ ORBextractor.minThFAST: 7
 # Viewer Parameters (used only when viewer is enabled)
 #--------------------------------------------------------------------------------------------
 Viewer.KeyFrameSize: 0.05
-Viewer.KeyFrameLineWidth: 1
+Viewer.KeyFrameLineWidth: 1.0
 Viewer.GraphLineWidth: 0.9
-Viewer.PointSize: 2
+Viewer.PointSize: 2.0
 Viewer.CameraSize: 0.08
-Viewer.CameraLineWidth: 3
-Viewer.ViewpointX: 0
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
 Viewer.ViewpointY: -0.7
 Viewer.ViewpointZ: -1.8
-Viewer.ViewpointF: 500
+Viewer.ViewpointF: 500.0

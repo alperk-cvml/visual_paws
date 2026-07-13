@@ -34,6 +34,8 @@ class VideoNode(Node):
         self.declare_parameter('image_topic', '/camera/image_raw')
         self.declare_parameter('camera_info_topic', '/camera/camera_info')
         self.declare_parameter('frame_id', 'camera_link_optical')
+        self.declare_parameter('width', 640)
+        self.declare_parameter('height', 480)
 
         # Camera intrinsics (defaults from URDF: 640×480, hfov=1.3962634 rad)
         # fx = fy = width / (2 * tan(hfov / 2)) ≈ 381.36
@@ -44,15 +46,51 @@ class VideoNode(Node):
 
         # ── Read parameters ───────────────────────────────────────────────
         self.video_path = self.get_parameter('video_path').value
-        self.fps = self.get_parameter('fps').value
-        self.loop = self.get_parameter('loop').value
+        
+        # Robustly parse parameters to handle string/int/float types
+        try:
+            self.fps = float(self.get_parameter('fps').value)
+        except (ValueError, TypeError):
+            self.fps = 10.0
+
+        try:
+            self.loop = bool(self.get_parameter('loop').value)
+        except (ValueError, TypeError):
+            self.loop = True
+
+        try:
+            self.width = int(self.get_parameter('width').value)
+        except (ValueError, TypeError):
+            self.width = 640
+
+        try:
+            self.height = int(self.get_parameter('height').value)
+        except (ValueError, TypeError):
+            self.height = 480
+
         image_topic = self.get_parameter('image_topic').value
         camera_info_topic = self.get_parameter('camera_info_topic').value
         self.frame_id = self.get_parameter('frame_id').value
-        self.fx = self.get_parameter('fx').value
-        self.fy = self.get_parameter('fy').value
-        self.cx = self.get_parameter('cx').value
-        self.cy = self.get_parameter('cy').value
+
+        try:
+            self.fx = float(self.get_parameter('fx').value)
+        except (ValueError, TypeError):
+            self.fx = 381.36
+
+        try:
+            self.fy = float(self.get_parameter('fy').value)
+        except (ValueError, TypeError):
+            self.fy = 381.36
+
+        try:
+            self.cx = float(self.get_parameter('cx').value)
+        except (ValueError, TypeError):
+            self.cx = 320.0
+
+        try:
+            self.cy = float(self.get_parameter('cy').value)
+        except (ValueError, TypeError):
+            self.cy = 240.0
 
         # ── Open video file ───────────────────────────────────────────────
         self.cap = cv2.VideoCapture(self.video_path)
@@ -65,13 +103,15 @@ class VideoNode(Node):
         self.video_fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        target_res_str = f"{self.width}×{self.height}" if (self.width > 0 and self.height > 0) else "Original"
         self.get_logger().info(
             f'Opened video: {self.video_path}\n'
-            f'  Resolution:  {self.video_width}×{self.video_height}\n'
-            f'  Native FPS:  {self.video_fps:.1f}\n'
+            f'  Original Res: {self.video_width}×{self.video_height}\n'
+            f'  Publish Res:  {target_res_str}\n'
+            f'  Native FPS:   {self.video_fps:.1f}\n'
             f'  Total frames: {self.total_frames}\n'
-            f'  Publish FPS: {self.fps:.1f}\n'
-            f'  Loop:        {self.loop}'
+            f'  Publish FPS:  {self.fps:.1f}\n'
+            f'  Loop:         {self.loop}'
         )
 
         # ── CV bridge ─────────────────────────────────────────────────────
@@ -104,6 +144,56 @@ class VideoNode(Node):
         timer_period = 1.0 / self.fps if self.fps > 0 else 1.0
         self.timer = self.create_timer(timer_period, self._timer_callback)
 
+        # ── Parameter callback for dynamic adjustments ───────────────────
+        self.add_on_set_parameters_callback(self._on_parameters_changed)
+
+    def _on_parameters_changed(self, params):
+        """Callback to handle dynamic parameters updates at runtime."""
+        from rcl_interfaces.msg import SetParametersResult
+
+        result = SetParametersResult(successful=True)
+        for param in params:
+            if param.name == 'fps':
+                try:
+                    new_fps = float(param.value)
+                    if new_fps <= 0:
+                        raise ValueError("FPS must be greater than 0")
+                    self.fps = new_fps
+                    
+                    # Update the timer
+                    self.timer.cancel()
+                    timer_period = 1.0 / self.fps
+                    self.timer = self.create_timer(timer_period, self._timer_callback)
+                    self.get_logger().info(f'Updated publish FPS dynamically to: {self.fps:.1f} Hz')
+                except Exception as e:
+                    result.successful = False
+                    result.reason = f"Invalid FPS: {e}"
+            elif param.name == 'width':
+                try:
+                    new_width = int(param.value)
+                    self.width = new_width
+                    # Rebuild static camera info
+                    self._camera_info_msg = self._build_camera_info()
+                    self.get_logger().info(f'Updated publish width dynamically to: {self.width}')
+                except Exception as e:
+                    result.successful = False
+                    result.reason = f"Invalid width: {e}"
+            elif param.name == 'height':
+                try:
+                    new_height = int(param.value)
+                    self.height = new_height
+                    # Rebuild static camera info
+                    self._camera_info_msg = self._build_camera_info()
+                    self.get_logger().info(f'Updated publish height dynamically to: {self.height}')
+                except Exception as e:
+                    result.successful = False
+                    result.reason = f"Invalid height: {e}"
+            elif param.name == 'loop':
+                self.loop = bool(param.value)
+                self.get_logger().info(f'Updated loop parameter dynamically to: {self.loop}')
+
+        return result
+
     # ──────────────────────────────────────────────────────────────────────
     # Camera info construction
     # ──────────────────────────────────────────────────────────────────────
@@ -111,8 +201,8 @@ class VideoNode(Node):
         """Build a CameraInfo message from the configured intrinsics."""
         msg = CameraInfo()
         msg.header.frame_id = self.frame_id
-        msg.width = self.video_width
-        msg.height = self.video_height
+        msg.width = self.width if self.width > 0 else self.video_width
+        msg.height = self.height if self.height > 0 else self.video_height
         msg.distortion_model = 'plumb_bob'
 
         # No distortion (pre-recorded video assumed undistorted)
@@ -166,6 +256,10 @@ class VideoNode(Node):
                 )
                 self.timer.cancel()
                 return
+
+        # Resize image if configured
+        if self.width > 0 and self.height > 0:
+            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
 
         # ── Publish Image ────────────────────────────────────────────
         now = self.get_clock().now().to_msg()

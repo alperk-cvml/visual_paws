@@ -1,0 +1,39 @@
+time="2026-06-24T14:05:56+03:00" level=warning msg="/home/alper/git/visual_paws/src/localization/docker-compose.yaml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+Attaching to localization
+ Container localization Starting 
+ Container localization Started 
+localization  | Starting >>> localization
+localization  | Finished <<< localization [0.17s]
+localization  | 
+localization  | Summary: 1 package finished [0.36s]
+localization  | [INFO] [launch]: All log files can be found below /home/ubuntu/.ros/log/2026-06-24-11-05-57-881246-alper-OMEN-Laptop-15-ek0xxx-55
+localization  | [INFO] [launch]: Default logging verbosity is set to INFO
+localization  | [INFO] [orbslam3_rgbd_node-1]: process started with pid [58]
+localization  | [INFO] [ekf_node-2]: process started with pid [59]
+localization  | [ekf_node-2] [INFO] [1782299157.971812729] [ekf_filter_node]: Waiting for clock to start...
+localization  | [orbslam3_rgbd_node-1] [INFO] [1782299158.049023373] [orbslam3_rgbd_node]: ORB-SLAM3 RGBD Node starting
+localization  | [orbslam3_rgbd_node-1]   Vocabulary:  /opt/ORB_SLAM3/Vocabulary/ORBvoc.txt
+localization  | [orbslam3_rgbd_node-1]   Settings:    /work/ws/install/localization/share/localization/config/orbslam3_rgbd.yaml
+localization  | [orbslam3_rgbd_node-1]   RGB topic:   /front_camera/image_raw
+localization  | [orbslam3_rgbd_node-1]   Depth topic: /depth_camera/depth_image
+localization  | [orbslam3_rgbd_node-1]   Viewer:      OFF
+localization  | [orbslam3_rgbd_node-1] 
+localization  | [orbslam3_rgbd_node-1] ORB-SLAM3 Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, Juan J. Gómez, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
+localization  | [orbslam3_rgbd_node-1] ORB-SLAM2 Copyright (C) 2014-2016 Raúl Mur-Artal, José M.M. Montiel and Juan D. Tardós, University of Zaragoza.
+localization  | [orbslam3_rgbd_node-1] This program comes with ABSOLUTELY NO WARRANTY;
+localization  | [orbslam3_rgbd_node-1] This is free software, and you are welcome to redistribute it
+localization  | [orbslam3_rgbd_node-1] under certain conditions. See LICENSE.txt.
+localization  | [orbslam3_rgbd_node-1] 
+localization  | [orbslam3_rgbd_node-1] Input sensor was set to: RGB-D
+localization  | [orbslam3_rgbd_node-1] Loading settings from /work/ws/install/localization/share/localization/config/orbslam3_rgbd.yaml
+localization  | [orbslam3_rgbd_node-1] 	-Loaded camera 1
+localization  | [orbslam3_rgbd_node-1] 	-Loaded image info
+localization  | [orbslam3_rgbd_node-1] Camera1.k3 optional parameter does not exist...
+localization  | [orbslam3_rgbd_node-1] Camera.newHeight optional parameter does not exist...
+localization  | [orbslam3_rgbd_node-1] Camera.newWidth optional parameter does not exist...
+localization  | [orbslam3_rgbd_node-1] Stereo.ThDepth required parameter does not exist, aborting...
+localization  | [ERROR] [orbslam3_rgbd_node-1]: process has died [pid 58, exit code 255, cmd '/work/ws/install/localization/lib/localization/orbslam3_rgbd_node --ros-args -r __node:=orbslam3_rgbd_node --params-file /tmp/launch_params_wmnlu2gn'].
+ Compose Stopping Gracefully Stopping... press Ctrl+C again to force
+ Container localization Stopping 
+ Container localization Stopped 
+

@@ -17,7 +17,7 @@ services:
 
       # Topic configuration (override for real hardware)
       - RGB_TOPIC=${RGB_TOPIC:-/camera/image_raw}
-      - DEPTH_TOPIC=${DEPTH_TOPIC:-/depth_camera/depth_image}
+      - DEPTH_TOPIC=${DEPTH_TOPIC:-/depth/image_raw}
       - USE_SIM_TIME=${USE_SIM_TIME:-true}
 
     volumes:
@@ -35,10 +35,8 @@ services:
         set -e;
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
         export LD_LIBRARY_PATH=/opt/ORB_SLAM3/lib:/opt/ORB_SLAM3/Thirdparty/DBoW2/lib:/opt/ORB_SLAM3/Thirdparty/g2o/lib:$${LD_LIBRARY_PATH};
+        sudo chown -R $$(id -u):$$(id -g) /work/ws/build/localization /work/ws/install/localization /work/ws/log/localization 2>/dev/null || true;
         colcon build --symlink-install --packages-select localization;
         source /work/ws/install/setup.bash;
-        ros2 launch localization localization.launch.py
-          rgb_topic:=$${RGB_TOPIC}
-          depth_topic:=$${DEPTH_TOPIC}
-          use_sim_time:=$${USE_SIM_TIME}
+        ros2 launch localization localization.launch.py rgb_topic:=$${RGB_TOPIC} depth_topic:=$${DEPTH_TOPIC} use_sim_time:=$${USE_SIM_TIME}
       "

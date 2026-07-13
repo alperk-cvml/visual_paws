@@ -16,9 +16,12 @@ CONTAINERS=(
   depth_image_proc
  # elevation_mapping
   elevation_mapping_cupy
+  monocular_depth
+  localization
   nav2_mppi_navigation
   quadruped_gait_controller
   quadruped_test_controller
+  video_camera_sim
 )
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -42,6 +45,12 @@ for CNAME in "${CONTAINERS[@]}"; do
   fi
 done
 
+# Create a session to launch rqt_image_view inside monocular_depth container
+CNAME="monocular_depth_rqt"
+tmux has-session -t "$CNAME" 2>/dev/null && tmux kill-session -t "$CNAME"
+tmux new-session -d -s "$CNAME" \
+  "docker exec -it monocular_depth bash -lc 'source /work/ws/install/setup.bash && ros2 run rqt_image_view rqt_image_view' 2>&1 || { echo '[container not running or rqt_image_view failed]'; read; }"
+
 FIRST="${CONTAINERS[0]}"
 
 # ── attach or leave in background ─────────────────────────────────────────────
@@ -50,6 +59,7 @@ if [[ "${1}" == "--detach" ]]; then
   for CNAME in "${CONTAINERS[@]}"; do
     echo "  tmux attach -t $CNAME"
   done
+  echo "  tmux attach -t monocular_depth_rqt"
 else
   echo "tmux sessions created. Attaching to $FIRST..."
   echo "(Use your tmux prefix + d to detach and see other sessions)"
