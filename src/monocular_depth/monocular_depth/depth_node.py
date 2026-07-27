@@ -95,8 +95,8 @@ class DepthNode(Node):
         )
 
         # ── Publishers ───────────────────────────────────────────────────
-        self.depth_pub = self.create_publisher(Image, output_topic, 10)
-        self.camera_info_pub = self.create_publisher(CameraInfo, camera_info_topic, 10)
+        self.depth_pub = self.create_publisher(Image, output_topic, sensor_qos)
+        self.camera_info_pub = self.create_publisher(CameraInfo, camera_info_topic, sensor_qos)
 
         self.get_logger().info(
             f'Subscribed to {input_topic}  →  publishing on {output_topic}'

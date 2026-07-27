@@ -19,10 +19,22 @@ services:
       - RGB_TOPIC=${RGB_TOPIC:-/camera/image_raw}
       - DEPTH_TOPIC=${DEPTH_TOPIC:-/depth/image_raw}
       - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      - MODE=${MODE:-MONOCULAR}
+      - ENABLE_VIEWER=${ENABLE_VIEWER:-true}
+
+      # GUI / X11 Forwarding
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+      - XAUTHORITY=/tmp/.docker.xauth
 
     volumes:
       # ROS 2 workspace
       - ../..:/work/ws:rw
+      # X11 socket for GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Xauthority
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
 
     working_dir: /work/ws
 
@@ -38,5 +50,5 @@ services:
         sudo chown -R $$(id -u):$$(id -g) /work/ws/build/localization /work/ws/install/localization /work/ws/log/localization 2>/dev/null || true;
         colcon build --symlink-install --packages-select localization;
         source /work/ws/install/setup.bash;
-        ros2 launch localization localization.launch.py rgb_topic:=$${RGB_TOPIC} depth_topic:=$${DEPTH_TOPIC} use_sim_time:=$${USE_SIM_TIME}
+        ros2 launch localization localization.launch.py rgb_topic:=$${RGB_TOPIC} depth_topic:=$${DEPTH_TOPIC} use_sim_time:=$${USE_SIM_TIME} mode:=$${MODE} enable_viewer:=$${ENABLE_VIEWER}
       "

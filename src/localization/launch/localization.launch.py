@@ -36,8 +36,13 @@ def generate_launch_description():
 
     settings_file_arg = DeclareLaunchArgument(
         'settings_file',
-        default_value=os.path.join(pkg_share, 'config', 'orbslam3_rgbd.yaml'),
-        description='Path to ORB-SLAM3 camera settings YAML')
+        default_value='',
+        description='Path to ORB-SLAM3 camera settings YAML (dynamically resolved if empty)')
+
+    mode_arg = DeclareLaunchArgument(
+        'mode',
+        default_value='MONOCULAR',
+        description='ORB-SLAM3 tracking mode (MONOCULAR or RGBD)')
 
     enable_viewer_arg = DeclareLaunchArgument(
         'enable_viewer',
@@ -64,7 +69,7 @@ def generate_launch_description():
         default_value='base_link',
         description='Base link frame ID')
 
-    # ── ORB-SLAM3 RGBD Node ─────────────────────────────────────────────
+    # ── ORB-SLAM3 Node ──────────────────────────────────────────────────
     orbslam3_node = Node(
         package='localization',
         executable='orbslam3_rgbd_node',
@@ -73,6 +78,7 @@ def generate_launch_description():
         parameters=[{
             'voc_file': LaunchConfiguration('voc_file'),
             'settings_file': LaunchConfiguration('settings_file'),
+            'mode': LaunchConfiguration('mode'),
             'rgb_topic': LaunchConfiguration('rgb_topic'),
             'depth_topic': LaunchConfiguration('depth_topic'),
             'enable_viewer': LaunchConfiguration('enable_viewer'),
@@ -108,6 +114,7 @@ def generate_launch_description():
         depth_topic_arg,
         voc_file_arg,
         settings_file_arg,
+        mode_arg,
         enable_viewer_arg,
         use_sim_time_arg,
         map_frame_arg,

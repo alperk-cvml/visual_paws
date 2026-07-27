@@ -70,6 +70,7 @@ public:
         this->declare_parameter<std::string>("odom_frame", "odom");
         this->declare_parameter<std::string>("base_frame", "base_link");
         this->declare_parameter<std::string>("camera_frame", "camera_link");
+        this->declare_parameter<std::string>("mode", "MONOCULAR");
 
         // ── Read parameters ─────────────────────────────────────────────
         voc_file_ = this->get_parameter("voc_file").as_string();
@@ -82,29 +83,45 @@ public:
         odom_frame_ = this->get_parameter("odom_frame").as_string();
         base_frame_ = this->get_parameter("base_frame").as_string();
         camera_frame_ = this->get_parameter("camera_frame").as_string();
+        mode_ = this->get_parameter("mode").as_string();
 
         // ── Resolve settings file ───────────────────────────────────────
         if (settings_file_.empty()) {
             // Default: use the config installed with the package
             std::string pkg_share = ament_index_cpp::get_package_share_directory("localization");
-            settings_file_ = pkg_share + "/config/orbslam3_rgbd.yaml";
+            if (mode_ == "MONOCULAR") {
+                settings_file_ = pkg_share + "/config/orbslam3_mono.yaml";
+            } else {
+                settings_file_ = pkg_share + "/config/orbslam3_rgbd.yaml";
+            }
         }
 
         RCLCPP_INFO(this->get_logger(),
-            "ORB-SLAM3 RGBD Node starting\n"
+            "ORB-SLAM3 Node starting in %s mode\n"
             "  Vocabulary:  %s\n"
             "  Settings:    %s\n"
             "  RGB topic:   %s\n"
-            "  Depth topic: %s\n"
+            "  Depth topic: %s (used only in RGBD mode)\n"
             "  Viewer:      %s",
-            voc_file_.c_str(), settings_file_.c_str(),
+            mode_.c_str(), voc_file_.c_str(), settings_file_.c_str(),
             rgb_topic.c_str(), depth_topic.c_str(),
             enable_viewer_ ? "ON" : "OFF");
 
         // ── Initialise ORB-SLAM3 ────────────────────────────────────────
+        ORB_SLAM3::System::eSensor sensor_type;
+        if (mode_ == "MONOCULAR") {
+            sensor_type = ORB_SLAM3::System::MONOCULAR;
+        } else if (mode_ == "RGBD") {
+            sensor_type = ORB_SLAM3::System::RGBD;
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Invalid mode: %s. Defaulting to MONOCULAR", mode_.c_str());
+            mode_ = "MONOCULAR";
+            sensor_type = ORB_SLAM3::System::MONOCULAR;
+        }
+
         slam_system_ = std::make_unique<ORB_SLAM3::System>(
             voc_file_, settings_file_,
-            ORB_SLAM3::System::RGBD,
+            sensor_type,
             enable_viewer_);
 
         RCLCPP_INFO(this->get_logger(), "ORB-SLAM3 system initialised successfully");
@@ -120,22 +137,30 @@ public:
         tracking_img_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
             "/orbslam3/tracking_image", 1);
 
-        // ── Synchronised image subscribers ──────────────────────────────
+        // ── Image subscribers ───────────────────────────────────────────
         // Use BEST_EFFORT QoS for camera streams (Gazebo publishes best-effort)
         rmw_qos_profile_t sensor_qos_profile = rmw_qos_profile_sensor_data;
 
-        rgb_sub_.subscribe(this, rgb_topic, sensor_qos_profile);
-        depth_sub_.subscribe(this, depth_topic, sensor_qos_profile);
+        if (mode_ == "MONOCULAR") {
+            mono_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+                rgb_topic,
+                rclcpp::SensorDataQoS(),
+                std::bind(&OrbSlam3RgbdNode::monoImageCallback, this, std::placeholders::_1));
+            RCLCPP_INFO(this->get_logger(), "Subscribed to Monocular RGB [%s]", rgb_topic.c_str());
+        } else {
+            rgb_sub_.subscribe(this, rgb_topic, sensor_qos_profile);
+            depth_sub_.subscribe(this, depth_topic, sensor_qos_profile);
 
-        sync_ = std::make_shared<Synchronizer>(
-            SyncPolicy(10), rgb_sub_, depth_sub_);
-        sync_->registerCallback(
-            std::bind(&OrbSlam3RgbdNode::imageCallback, this,
-                      std::placeholders::_1, std::placeholders::_2));
+            sync_ = std::make_shared<Synchronizer>(
+                SyncPolicy(10), rgb_sub_, depth_sub_);
+            sync_->registerCallback(
+                std::bind(&OrbSlam3RgbdNode::imageCallback, this,
+                          std::placeholders::_1, std::placeholders::_2));
 
-        RCLCPP_INFO(this->get_logger(),
-            "Subscribed to RGB [%s] + Depth [%s] with ApproximateTime sync",
-            rgb_topic.c_str(), depth_topic.c_str());
+            RCLCPP_INFO(this->get_logger(),
+                "Subscribed to RGB [%s] + Depth [%s] with ApproximateTime sync",
+                rgb_topic.c_str(), depth_topic.c_str());
+        }
 
         // ── Stats timer ─────────────────────────────────────────────────
         stats_timer_ = this->create_wall_timer(
@@ -155,6 +180,49 @@ private:
     using SyncPolicy = message_filters::sync_policies::ApproximateTime<
         sensor_msgs::msg::Image, sensor_msgs::msg::Image>;
     using Synchronizer = message_filters::Synchronizer<SyncPolicy>;
+
+    // ── Monocular image callback ────────────────────────────────────────
+    void monoImageCallback(const sensor_msgs::msg::Image::ConstSharedPtr & rgb_msg)
+    {
+        // Convert ROS image to OpenCV
+        cv::Mat rgb_image;
+        try {
+            rgb_image = cv_bridge::toCvShare(rgb_msg, "bgr8")->image;
+        } catch (const cv_bridge::Exception & e) {
+            RCLCPP_ERROR(this->get_logger(),
+                "cv_bridge conversion failed: %s", e.what());
+            return;
+        }
+
+        double timestamp = rclcpp::Time(rgb_msg->header.stamp).seconds();
+
+        Sophus::SE3f Tcw;
+        try {
+            Tcw = slam_system_->TrackMonocular(rgb_image, timestamp);
+        } catch (const std::exception & e) {
+            RCLCPP_ERROR(this->get_logger(),
+                "ORB-SLAM3 TrackMonocular exception: %s", e.what());
+            return;
+        }
+
+        total_frames_++;
+
+        // ── Check tracking state ────────────────────────────────────────
+        int tracking_state = slam_system_->GetTrackingState();
+        if (tracking_state != 2) {  // 2 = OK
+            if (tracking_state == 3) {  // LOST
+                lost_frames_++;
+                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                    "ORB-SLAM3 tracking LOST (lost %lu / %lu frames)",
+                    lost_frames_, total_frames_);
+            }
+            return;  // Don't publish when not tracking
+        }
+
+        tracked_frames_++;
+
+        processAndPublishPose(Tcw, rgb_msg->header.stamp);
+    }
 
     // ── Synchronised image callback ─────────────────────────────────────
     void imageCallback(
@@ -213,7 +281,12 @@ private:
 
         tracked_frames_++;
 
-        // ── Convert ORB-SLAM3 pose to ROS odometry ─────────────────────
+        processAndPublishPose(Tcw, rgb_msg->header.stamp);
+    }
+
+    // ── Common pose processing and publishing ───────────────────────────
+    void processAndPublishPose(const Sophus::SE3f & Tcw, const rclcpp::Time & stamp)
+    {
         // Tcw is camera-in-world (world = SLAM map origin).
         // We need Twc (world-to-camera) = Tcw.inverse()
         Sophus::SE3f Twc = Tcw.inverse();
@@ -251,7 +324,7 @@ private:
 
         // ── Publish Odometry ────────────────────────────────────────────
         auto odom_msg = std::make_unique<nav_msgs::msg::Odometry>();
-        odom_msg->header.stamp = rgb_msg->header.stamp;
+        odom_msg->header.stamp = stamp;
         odom_msg->header.frame_id = map_frame_;
         odom_msg->child_frame_id = base_frame_;
 
@@ -286,7 +359,7 @@ private:
         // ── Optionally publish TF: map → odom ───────────────────────────
         if (publish_tf_) {
             geometry_msgs::msg::TransformStamped tf_msg;
-            tf_msg.header.stamp = rgb_msg->header.stamp;
+            tf_msg.header.stamp = stamp;
             tf_msg.header.frame_id = map_frame_;
             tf_msg.child_frame_id = odom_frame_;
 
@@ -300,7 +373,6 @@ private:
 
             tf_broadcaster_->sendTransform(tf_msg);
         }
-
     }
 
     // ── Periodic stats logging ──────────────────────────────────────────
@@ -331,6 +403,7 @@ private:
     std::string settings_file_;
     bool enable_viewer_;
     bool publish_tf_;
+    std::string mode_;
 
     // Frame names
     std::string map_frame_;
@@ -351,6 +424,9 @@ private:
     message_filters::Subscriber<sensor_msgs::msg::Image> rgb_sub_;
     message_filters::Subscriber<sensor_msgs::msg::Image> depth_sub_;
     std::shared_ptr<Synchronizer> sync_;
+
+    // Monocular subscriber
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr mono_sub_;
 
     // Stats timer
     rclcpp::TimerBase::SharedPtr stats_timer_;
