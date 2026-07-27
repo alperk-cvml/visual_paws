@@ -1,0 +1,64 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# ORB-SLAM3 Camera Configuration — Quadruped Front Camera (Simulation)
+#
+# Computed from URDF:
+#   horizontal_fov = 1.3962634 rad (≈80°)
+#   image: 640×480 (RGB)
+#   fx = fy = (width/2) / tan(hfov/2) = 320 / tan(0.6981317) ≈ 381.36
+#   cx = 320.0, cy = 240.0
+#   No distortion in simulation
+#--------------------------------------------------------------------------------------------
+
+File.version: "1.0"
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters
+#--------------------------------------------------------------------------------------------
+Camera.type: "PinHole"
+
+# Camera calibration (OpenCV model)
+Camera1.fx: 381.36
+Camera1.fy: 381.36
+Camera1.cx: 320.0
+Camera1.cy: 240.0
+
+# Distortion coefficients (zero in simulation)
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+
+Camera.width: 640
+Camera.height: 480
+
+# Camera frames per second
+Camera.fps: 30
+
+# Color order of the images (0: BGR, 1: RGB)
+# Gazebo publishes RGB; cv_bridge converts to BGR for ORB-SLAM3
+Camera.RGB: 0
+
+#--------------------------------------------------------------------------------------------
+# ORB Extractor Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters (used only when viewer is enabled)
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
