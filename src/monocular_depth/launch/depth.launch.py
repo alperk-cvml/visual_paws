@@ -24,6 +24,8 @@ def generate_launch_description():
                               description='Target inference rate (Hz)'),
         DeclareLaunchArgument('model_path', default_value='',
                               description='Path to model weights (empty = auto-resolve)'),
+        DeclareLaunchArgument('use_sim_time', default_value='false',
+                              description='Use a ROS simulation clock'),
 
         Node(
             package='monocular_depth',
@@ -39,6 +41,7 @@ def generate_launch_description():
                 'device': LaunchConfiguration('device'),
                 'target_fps': LaunchConfiguration('target_fps'),
                 'model_path': LaunchConfiguration('model_path'),
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
             }],
         ),
     ])
