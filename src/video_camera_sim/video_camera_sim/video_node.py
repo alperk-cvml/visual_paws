@@ -13,6 +13,8 @@ Published topics:
   - /camera/camera_info    (sensor_msgs/CameraInfo)
 """
 
+import time
+
 import cv2
 import rclpy
 from rclpy.node import Node
@@ -36,6 +38,7 @@ class VideoNode(Node):
         self.declare_parameter('frame_id', 'camera_link_optical')
         self.declare_parameter('width', 640)
         self.declare_parameter('height', 480)
+        self.declare_parameter('start_delay', 0.0)
 
         # Camera intrinsics (defaults from URDF: 640×480, hfov=1.3962634 rad)
         # fx = fy = width / (2 * tan(hfov / 2)) ≈ 381.36
@@ -67,6 +70,13 @@ class VideoNode(Node):
             self.height = int(self.get_parameter('height').value)
         except (ValueError, TypeError):
             self.height = 480
+
+        try:
+            self.start_delay = max(
+                0.0, float(self.get_parameter('start_delay').value))
+        except (ValueError, TypeError):
+            self.start_delay = 0.0
+        self._playback_start_time = time.monotonic() + self.start_delay
 
         image_topic = self.get_parameter('image_topic').value
         camera_info_topic = self.get_parameter('camera_info_topic').value
@@ -111,6 +121,7 @@ class VideoNode(Node):
             f'  Native FPS:   {self.video_fps:.1f}\n'
             f'  Total frames: {self.total_frames}\n'
             f'  Publish FPS:  {self.fps:.1f}\n'
+            f'  Start delay:  {self.start_delay:.1f}s\n'
             f'  Loop:         {self.loop}'
         )
 
@@ -235,6 +246,9 @@ class VideoNode(Node):
     # Timer callback — read and publish one frame
     # ──────────────────────────────────────────────────────────────────────
     def _timer_callback(self):
+        if time.monotonic() < self._playback_start_time:
+            return
+
         ret, frame = self.cap.read()
 
         if not ret:
