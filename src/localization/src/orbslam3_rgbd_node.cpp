@@ -304,8 +304,9 @@ private:
         // R_base_from_cam = Rz(−π/2) · Rx(−π/2)
         // This is equivalent to: x_ros = z_cam, y_ros = −x_cam, z_ros = −y_cam
         //
-        // We look up the camera→base_link transform from TF if available,
-        // otherwise apply the standard optical→ROS conversion.
+        // The optical-axis conversion below produces a pose for a virtual
+        // ROS-aligned camera frame at the camera origin (camera_link). The
+        // physical camera-to-body lever arm is then applied from URDF TF.
 
         Eigen::Quaternionf q_optical_to_ros;
         // Rotation from optical frame to ROS frame:
@@ -320,6 +321,47 @@ private:
         // Apply frame correction to both position and orientation
         Eigen::Vector3f t_ros = q_optical_to_ros * t;
         Eigen::Quaternionf q_ros = q_optical_to_ros * q * q_optical_to_ros.inverse();
+        q_ros.normalize();
+
+        // T_map_base = T_map_camera_link * T_camera_link_base.
+        // lookupTransform(target, source) returns T_target_source.
+        geometry_msgs::msg::TransformStamped camera_from_base;
+        try {
+            camera_from_base = tf_buffer_->lookupTransform(
+                camera_frame_,
+                base_frame_,
+                stamp,
+                rclcpp::Duration::from_seconds(0.1));
+        } catch (const tf2::TransformException & e) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 5000,
+                "Cannot convert ORB-SLAM camera pose to %s: %s",
+                base_frame_.c_str(), e.what());
+            return;
+        }
+
+        Eigen::Isometry3f T_map_camera = Eigen::Isometry3f::Identity();
+        T_map_camera.linear() = q_ros.toRotationMatrix();
+        T_map_camera.translation() = t_ros;
+
+        const auto & extrinsic = camera_from_base.transform;
+        Eigen::Quaternionf q_camera_base(
+            static_cast<float>(extrinsic.rotation.w),
+            static_cast<float>(extrinsic.rotation.x),
+            static_cast<float>(extrinsic.rotation.y),
+            static_cast<float>(extrinsic.rotation.z));
+        q_camera_base.normalize();
+
+        Eigen::Isometry3f T_camera_base = Eigen::Isometry3f::Identity();
+        T_camera_base.linear() = q_camera_base.toRotationMatrix();
+        T_camera_base.translation() = Eigen::Vector3f(
+            static_cast<float>(extrinsic.translation.x),
+            static_cast<float>(extrinsic.translation.y),
+            static_cast<float>(extrinsic.translation.z));
+
+        const Eigen::Isometry3f T_map_base = T_map_camera * T_camera_base;
+        t_ros = T_map_base.translation();
+        q_ros = Eigen::Quaternionf(T_map_base.rotation());
         q_ros.normalize();
 
         // ── Publish Odometry ────────────────────────────────────────────
@@ -356,12 +398,14 @@ private:
 
         odom_pub_->publish(std::move(odom_msg));
 
-        // ── Optionally publish TF: map → odom ───────────────────────────
+        // Offline-video mode has no continuous odometry source. In that
+        // mode ORB-SLAM directly owns map → base_link. The dual-EKF modes
+        // keep this disabled so each navigation transform has one owner.
         if (publish_tf_) {
             geometry_msgs::msg::TransformStamped tf_msg;
             tf_msg.header.stamp = stamp;
             tf_msg.header.frame_id = map_frame_;
-            tf_msg.child_frame_id = odom_frame_;
+            tf_msg.child_frame_id = base_frame_;
 
             tf_msg.transform.translation.x = static_cast<double>(t_ros.x());
             tf_msg.transform.translation.y = static_cast<double>(t_ros.y());

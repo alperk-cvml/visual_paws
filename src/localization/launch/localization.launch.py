@@ -11,8 +11,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -69,6 +71,14 @@ def generate_launch_description():
         default_value='base_link',
         description='Base link frame ID')
 
+    localization_mode_arg = DeclareLaunchArgument(
+        'localization_mode',
+        default_value='ground_truth',
+        choices=['ground_truth', 'slam', 'offline_video'],
+        description=(
+            'ground_truth leaves TF to Gazebo; slam enables the local and '
+            'global EKFs; offline_video makes ORB-SLAM own map->base_link'))
+
     # ── ORB-SLAM3 Node ──────────────────────────────────────────────────
     orbslam3_node = Node(
         package='localization',
@@ -82,30 +92,96 @@ def generate_launch_description():
             'rgb_topic': LaunchConfiguration('rgb_topic'),
             'depth_topic': LaunchConfiguration('depth_topic'),
             'enable_viewer': LaunchConfiguration('enable_viewer'),
-            'publish_tf': False,    # EKF handles TF publishing
+            'publish_tf': ParameterValue(
+                PythonExpression([
+                    "'", LaunchConfiguration('localization_mode'),
+                    "' == 'offline_video'",
+                ]),
+                value_type=bool,
+            ),
             'map_frame': LaunchConfiguration('map_frame'),
             'odom_frame': LaunchConfiguration('odom_frame'),
             'base_frame': LaunchConfiguration('base_frame'),
+            # ORB optical axes are converted to a ROS-aligned camera pose in
+            # the node; this frame supplies the remaining camera lever arm.
             'camera_frame': 'camera_link',
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
     )
 
-    # ── robot_localization EKF Node ──────────────────────────────────────
-    ekf_config = os.path.join(pkg_share, 'config', 'ekf.yaml')
+    # Offline video has no Gazebo/robot_state_publisher. Supply only the
+    # camera mount extrinsics; ORB-SLAM supplies the moving map->base_link TF.
+    offline_base_to_camera = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='offline_base_to_camera',
+        arguments=[
+            '--x', '0.125', '--y', '0.0', '--z', '0.01375',
+            '--roll', '0.0', '--pitch', '0.0', '--yaw', '0.0',
+            '--frame-id', LaunchConfiguration('base_frame'),
+            '--child-frame-id', 'camera_link',
+        ],
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('localization_mode'),
+            "' == 'offline_video'",
+        ])),
+    )
+    offline_camera_to_optical = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='offline_camera_to_optical',
+        arguments=[
+            '--x', '0.0', '--y', '0.0', '--z', '0.0',
+            '--roll', '-1.5707963267948966',
+            '--pitch', '0.0',
+            '--yaw', '-1.5707963267948966',
+            '--frame-id', 'camera_link',
+            '--child-frame-id', 'camera_link_optical',
+        ],
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('localization_mode'),
+            "' == 'offline_video'",
+        ])),
+    )
 
-    ekf_node = Node(
+    # The local filter owns odom->base_link. Gazebo ground truth is a
+    # temporary continuous odometry input until /odom_lko is implemented.
+    local_ekf_config = os.path.join(pkg_share, 'config', 'ekf_local.yaml')
+    local_ekf_node = Node(
         package='robot_localization',
         executable='ekf_node',
-        name='ekf_filter_node',
+        name='ekf_local_filter',
         output='screen',
         parameters=[
-            ekf_config,
+            local_ekf_config,
             {'use_sim_time': LaunchConfiguration('use_sim_time')},
         ],
         remappings=[
             ('odometry/filtered', '/odom'),
         ],
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('localization_mode'), "' == 'slam'",
+        ])),
+    )
+
+    # The global filter consumes the local estimate plus ORB-SLAM's absolute
+    # map pose. With world_frame=map it owns map->odom, never base_link.
+    global_ekf_config = os.path.join(pkg_share, 'config', 'ekf_global.yaml')
+    global_ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_global_filter',
+        output='screen',
+        parameters=[
+            global_ekf_config,
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
+        ],
+        remappings=[
+            ('odometry/filtered', '/odometry/global'),
+        ],
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('localization_mode'), "' == 'slam'",
+        ])),
     )
 
     return LaunchDescription([
@@ -120,8 +196,12 @@ def generate_launch_description():
         map_frame_arg,
         odom_frame_arg,
         base_frame_arg,
+        localization_mode_arg,
 
         # Nodes
+        offline_base_to_camera,
+        offline_camera_to_optical,
         orbslam3_node,
-        ekf_node,
+        local_ekf_node,
+        global_ekf_node,
     ])
