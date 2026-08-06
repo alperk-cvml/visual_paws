@@ -3,6 +3,11 @@ project(quadruped_gazebo)
 
 find_package(ament_cmake REQUIRED)
 
+install(PROGRAMS
+  scripts/gazebo_ground_truth_odometry.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
