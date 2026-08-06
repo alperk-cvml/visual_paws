@@ -16,9 +16,10 @@ from launch.actions import (
     RegisterEventHandler,
     TimerAction,
 )
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -38,6 +39,15 @@ def generate_launch_description():
     declare_x = DeclareLaunchArgument("x_pose", default_value="0.0")
     declare_y = DeclareLaunchArgument("y_pose", default_value="0.0")
     declare_z = DeclareLaunchArgument("z_pose", default_value="0.35")
+    declare_localization_mode = DeclareLaunchArgument(
+        "localization_mode",
+        default_value="ground_truth",
+        choices=["ground_truth", "slam"],
+        description=(
+            "ground_truth publishes map->odom and odom->base_link; "
+            "slam publishes only /odom_ground_truth for the localization EKFs"
+        ),
+    )
 
     # ── Robot description ─────────────────────────────────────────
     xacro_file = os.path.join(pkg_share, "urdf", "quadruped.urdf.xacro")
@@ -107,7 +117,7 @@ def generate_launch_description():
             "/model/quadruped/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
         ],
         remappings=[
-            ("/model/quadruped/pose", "/tf"),
+            ("/model/quadruped/pose", "/gazebo/model_pose"),
         ],
         output="screen",
     )
@@ -147,42 +157,37 @@ def generate_launch_description():
         )
     )
 
-    # ── RViz (optional) ───────────────────────────────────────────
-    rviz_config = os.path.join(pkg_share, "config", "quadruped.rviz")
-    rviz = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2",
-        arguments=["-d", rviz_config] if os.path.exists(rviz_config) else [],
-        parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+    # Gazebo supplies continuous ground-truth odometry. In ground_truth mode
+    # this node also owns odom->base_link. In slam mode only the odometry topic
+    # is published, leaving that TF to the local EKF.
+    ground_truth_odometry = Node(
+        package="quadruped_gazebo",
+        executable="gazebo_ground_truth_odometry.py",
+        name="gazebo_ground_truth_odometry",
         output="screen",
+        parameters=[{
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "publish_tf": ParameterValue(
+                PythonExpression([
+                    "'", LaunchConfiguration("localization_mode"),
+                    "' == 'ground_truth'",
+                ]),
+                value_type=bool,
+            ),
+        }],
     )
 
-    # ── Static TF from Gazebo model to base_link ──────────────────
-    link_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_transform_publisher_bridge",
-        arguments=["0", "0", "0", "0", "0", "0", "quadruped/base_link", "base_link"],
-        output="screen",
-    )
-
-    # ── Temporary Static TF from quadruped_world to odom ────────────────────
-    odom_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_transform_publisher_odom",
-        arguments=["0", "0", "0", "0", "0", "0", "quadruped_world", "odom"],
-        output="screen",
-    )
-
-    # ── Temporary Static TF from quadruped_world to odom ────────────────────
+    # Phase 1 global frame. The global EKF owns map->odom in slam mode.
     map_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
-        name="static_transform_publisher_map",
-        arguments=["0", "0", "0", "0", "0", "0", "odom", "map"],
+        name="static_map_to_odom",
+        arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
         output="screen",
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration("localization_mode"),
+            "' == 'ground_truth'",
+        ])),
     )
 
     return LaunchDescription(
@@ -191,15 +196,14 @@ def generate_launch_description():
         declare_x,
         declare_y,
         declare_z,
+        declare_localization_mode,
         robot_state_publisher,
         gazebo,
         spawn_robot,
         bridge,
         load_after_spawn,
         load_joint_after_broadcaster,
-        link_tf,
-        odom_tf,
+        ground_truth_odometry,
         map_tf,
-        rviz,
         ]
     )
