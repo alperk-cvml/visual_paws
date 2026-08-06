@@ -8,8 +8,8 @@
 bt_navigator:
   ros__parameters:
     use_sim_time: true
-    global_frame: map
-    robot_base_frame: base_link
+    global_frame: <map_frame>
+    robot_base_frame: <base_frame>
     odom_topic: /odom
     bt_loop_duration: 10
     default_server_timeout: 20
@@ -142,8 +142,8 @@ local_costmap:
       use_sim_time: true
       update_frequency: 5.0
       publish_frequency: 2.0
-      global_frame: odom
-      robot_base_frame: base_link
+      global_frame: <odom_frame>
+      robot_base_frame: <base_frame>
       rolling_window: true
       width: 4
       height: 4
@@ -155,7 +155,7 @@ local_costmap:
       plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
-        map_topic: /occupancy_grid_layer
+        map_topic: <occupancy_grid_topic>
         map_subscribe_transient_local: false   # elevation_mapping publishes volatile
         subscribe_to_updates: false
       inflation_layer:
@@ -170,8 +170,8 @@ global_costmap:
       use_sim_time: true
       update_frequency: 1.0
       publish_frequency: 1.0
-      global_frame: map
-      robot_base_frame: base_link
+      global_frame: <map_frame>
+      robot_base_frame: <base_frame>
       rolling_window: true
       width: 15
       height: 15
@@ -183,7 +183,7 @@ global_costmap:
       plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
-        map_topic: /occupancy_grid_layer
+        map_topic: <occupancy_grid_topic>
         map_subscribe_transient_local: false
         subscribe_to_updates: false
       inflation_layer:
@@ -231,8 +231,8 @@ behavior_server:
       plugin: "nav2_behaviors::DriveOnHeading"
     wait:
       plugin: "nav2_behaviors::Wait"
-    global_frame: odom
-    robot_base_frame: base_link
+    global_frame: <odom_frame>
+    robot_base_frame: <base_frame>
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
@@ -307,8 +307,8 @@ docking_server:
     undock_linear_tolerance: 0.05
     undock_angular_tolerance: 0.05
     max_retries: 3
-    base_frame: "base_link"
-    odom_frame: "odom"
+    base_frame: "<base_frame>"
+    odom_frame: "<odom_frame>"
     dock_plugins: ['dummy_dock']
     dummy_dock:
       plugin: 'opennav_docking::SimpleChargingDock'

@@ -1,0 +1,349 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**Visual Paws** is a ROS 2 quadruped robot autonomous navigation stack. It targets real outdoor deployment on a 12-DOF quadruped (3 joints/leg × 4 legs) using **camera-only perception** (no LiDAR), running on NVIDIA Jetson Orin Nano / NX. The stack is designed for multi-vehicle extensibility (quadruped, Ackermann, tracked, USV) through a shared vehicle interface contract. Simulation runs in Gazebo Harmonic; deployment is fully containerized.
+
+**Key stack**: ROS 2 Jazzy · Gazebo Harmonic · CycloneDDS · Python 3 / C++ · NVIDIA CUDA (GPU containers) · TensorRT (inference)
+
+**Hardware target**: NVIDIA Jetson Orin Nano / NX (ARM64, JetPack 6.x, L4T r36.x)
+
+---
+
+## Design Principles
+
+- **Camera-only perception**: No LiDAR. Metric depth and surface normals are inferred from RGB via neural networks (Depth Anything V2 + Metric3D V2).
+- **Modular, not end-to-end**: Each layer is independently replaceable. AI is injected only at the locomotion layer (Phase 3 RL policy), not throughout the stack. This preserves debuggability, multi-vehicle reuse, and open-source reference value.
+- **Vehicle-agnostic above the odometry boundary**: All platforms publish `nav_msgs/Odometry` + a traversability costmap. Elevation mapping, traversability, MPPI, and localization layers are shared across vehicle types. Only the odometry source and gait/drive controller differ per platform.
+- **Docker-first**: Every module has its own `Dockerfile` and `docker-compose.yaml`. No bare-metal ROS installs.
+- **Production hygiene from the start**: CI, unit tests, quantitative metrics, and honest trade-off documentation are built-in, not afterthoughts.
+
+---
+
+## Development Phases
+
+| Phase | Milestone | Locomotion |
+|---|---|---|
+| **Phase 1** | Sim baseline: blind locomotion + elevation-map-aware routing | Fixed diagonal trot (analytic IK) |
+| **Phase 2** | Traversability-aware routing, real depth inference, real localization | Fixed trot + terrain cost |
+| **Phase 3** | Perceptive locomotion on real hardware; Isaac Lab RL policy | Perceptive RL policy (Isaac Lab → Jetson) |
+
+> Current state: Phase 1 (Gazebo sim, fake localization). Phase 2 work begins once the sim pipeline is validated end-to-end.
+
+---
+
+## Build & Run
+
+### Host Machine Setup (one-time for Gazebo GUI)
+```bash
+xhost +local:docker
+XAUTH=/tmp/.docker.xauth
+touch $XAUTH
+xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f $XAUTH nmerge -
+```
+
+### Start All Containers
+```bash
+docker compose up -d --build     # build images and start in background
+./tmux-attach.sh                 # attach to quadruped_gazebo tmux session
+./tmux-attach.sh --detach        # create all tmux sessions without attaching
+```
+
+### Inside Containers (ROS 2 Workspace)
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install                              # build all packages
+colcon build --symlink-install --packages-select <pkg>     # build one package
+source install/setup.bash
+ros2 launch <pkg> <launch_file.py>
+```
+
+### Attach to Keyboard Controller
+```bash
+tmux attach -t quadruped_test_controller   # W/A/S/D forward/strafe, Q/E rotate, ESC quit
+```
+
+### Monitor ROS Topics
+```bash
+ros2 topic list
+ros2 topic echo /cmd_vel
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}"
+```
+
+---
+
+## Architecture
+
+### Full Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PERCEPTION                                                     │
+│                                                                 │
+│  RGB Camera ──→ Depth Anything V2 ──→ /depth/image_raw         │
+│             └→ Metric3D V2        ──→ /depth/surface_normals   │
+│                                                                 │
+│  /depth/image_raw + /camera/camera_info                        │
+│    └──→ depth_image_proc ──→ /depth/points (PointCloud2)       │
+└─────────────────────────────────────────────────────────────────┘
+                          │ /depth/points
+                          │ /depth/surface_normals
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  MAPPING                                                        │
+│                                                                 │
+│  elevation_mapping_cupy                                         │
+│    ← /depth/points (covariance-weighted fusion, GPU)           │
+│    ← /depth/surface_normals (slope/roughness inputs)           │
+│    ← /odom (robot pose)                                        │
+│    → /elevation_map  (grid_map)                                │
+│                                                                 │
+│  traversability_estimation                                      │
+│    ← /elevation_map                                            │
+│    → /traversability_map  (slope + roughness + step height)    │
+│    → /traversability_costmap  (nav_msgs/OccupancyGrid)         │
+└─────────────────────────────────────────────────────────────────┘
+                          │ /traversability_costmap
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  LOCALIZATION                          (Phase 2+)               │
+│                                                                 │
+│  Gait Controller ──→ /odom_lko   (leg kinematics odometry)     │
+│  ORB-SLAM3 (RGBD) ──→ /odom_slam (loop-closure drift corr.)    │
+│                                                                 │
+│  robot_localization EKF                                        │
+│    ← /odom_lko + /odom_slam + /imu/data                       │
+│    → /odom  (fused, authoritative)                             │
+│    → /tf: map → odom                                           │
+│                                                                 │
+│  Phase 1 fallback: static map→odom TF (fake localisation)      │
+└─────────────────────────────────────────────────────────────────┘
+                          │ /odom, /tf
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PLANNING & CONTROL                                             │
+│                                                                 │
+│  Nav2 (SmacPlannerLattice global, MPPI local)                  │
+│    ← /traversability_costmap                                   │
+│    ← /odom, /tf                                                │
+│    → /cmd_vel  (Twist: linear.x/y + angular.z)                │
+│    goal: /navigate_to_pose action (RViz2 or QGC mission)       │
+└─────────────────────────────────────────────────────────────────┘
+                          │ /cmd_vel
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  LOCOMOTION                                                     │
+│                                                                 │
+│  Phase 1–2: Fixed diagonal trot (analytic IK, 50 Hz)           │
+│  Phase 3:   Perceptive RL policy (Isaac Lab → TensorRT/Jetson) │
+│               ← /cmd_vel + /elevation_map (proprioception)     │
+│               → /quadruped_joint_controller/commands           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Vehicle Interface Contract (Multi-Vehicle Boundary)
+
+Everything above the following interface is vehicle-agnostic and shared across platforms:
+
+| Topic / TF | Type | Provider per vehicle |
+|---|---|---|
+| `/odom` | `nav_msgs/Odometry` | LKO (quadruped), wheel odom (Ackermann/tracked), GPS+DVL (USV) |
+| `/traversability_costmap` | `nav_msgs/OccupancyGrid` | Shared (elevation_mapping_cupy + traversability_estimation) |
+| `/tf: base_link → odom` | TF2 | From odometry source above |
+| `/imu/data` | `sensor_msgs/Imu` | Platform IMU |
+
+The MPPI controller, traversability estimator, elevation mapper, and localization EKF consume only these interfaces and are never coupled to a specific vehicle.
+
+### Container Layout
+
+The root `docker-compose.yaml` uses Compose `include:` to pull in each module's own `docker-compose.yaml`. All containers run on the host network with `ipc: host` for zero-config ROS 2 DDS discovery.
+
+| Container | Image Base | Phase | Role |
+|---|---|---|---|
+| `quadruped_gazebo` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Physics sim, robot spawn, sensor publishing |
+| `rviz` | `osrf/ros:jazzy-desktop-full` | 1+ | Standalone visualization for simulation and offline pipelines |
+| `monocular_depth` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 2+ | Depth Anything V2 + Metric3D V2 → depth + normals |
+| `depth_image_proc` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Depth → point cloud conversion |
+| `elevation_mapping_cupy` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 1+ | GPU elevation mapping |
+| `traversability_estimation` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 2+ | Slope/roughness/step costmap from elevation map |
+| `localization` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 2+ | ORB-SLAM3 + LKO → robot_localization EKF |
+| `nav2_mppi_navigation` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Nav2 + MPPI, traversability costmap consumer |
+| `quadruped_gait_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1–2 | Analytic IK + diagonal trot; publishes LKO |
+| `quadruped_rl_controller` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 3 | TensorRT perceptive RL policy from Isaac Lab |
+| `quadruped_test_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Keyboard teleop |
+| `video_camera_sim` | `ros:jazzy-ros-base` | 2+ | Plays pre-recorded video as camera topics for offline testing |
+
+> **Base image note**: Use `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` for CPU/ROS-only nodes. Use `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` for nodes requiring GPU inference (monocular depth, elevation mapping, RL policy). These images ship pre-built PyTorch + CUDA for Jetson; avoid `nvidia/cuda` + manual PyTorch installs on ARM64.
+
+### ROS 2 Topic Flow (complete)
+
+```
+[Phase 1 – Sim only]
+Gazebo Sim
+  → /tf, /imu/data, /front_camera/*, /depth_camera/*
+
+Depth Image Proc
+  ← /depth_camera/image_raw + /depth_camera/camera_info
+  → /depth_camera/points
+
+Elevation Mapping CuPy
+  ← /depth_camera/points
+  → /elevation_map, /occupancy_grid  (raw, slope-unaware)
+
+Nav2 MPPI Navigation
+  ← /occupancy_grid, /odom (fake: static map→odom TF), /tf
+  → /cmd_vel
+
+Gait Controller
+  ← /cmd_vel
+  → /quadruped_joint_controller/commands
+
+─────────────────────────────────────────────────────────────────
+
+[Phase 2+ – Real hardware / full stack]
+RGB Camera
+  → /camera/image_raw, /camera/camera_info
+
+Video Camera Sim (offline testing, replaces live camera)
+  ← pre-recorded video file
+  → /camera/image_raw     (sensor_msgs/Image, BGR8)
+  → /camera/camera_info   (sensor_msgs/CameraInfo)
+
+Monocular Depth (Depth Anything V2 + Metric3D V2)
+  ← /camera/image_raw
+  → /depth/image_raw      (metric, in metres)
+  → /depth/surface_normals (sensor_msgs/Image, 3-channel XYZ)
+
+Depth Image Proc
+  ← /depth/image_raw + /camera/camera_info
+  → /depth/points  (PointCloud2)
+
+Elevation Mapping CuPy
+  ← /depth/points
+  → /elevation_map  (grid_map_msgs/GridMap)
+
+Traversability Estimation
+  ← /elevation_map
+  → /traversability_map
+  → /traversability_costmap  (nav_msgs/OccupancyGrid)
+
+Localization
+  ← /odom_lko (from gait controller joint states + kinematics)
+  ← /camera/image_raw + /depth/image_raw  (ORB-SLAM3 RGBD)
+  ← /imu/data
+  → /odom  (robot_localization EKF fusion)
+  → /tf: map→odom
+
+Nav2 MPPI Navigation
+  ← /traversability_costmap
+  ← /odom, /tf
+  → /cmd_vel
+
+Gait Controller (Phase 1–2) / RL Policy (Phase 3)
+  ← /cmd_vel
+  ← /elevation_map  (Phase 3 only: foothold-aware)
+  → /quadruped_joint_controller/commands
+  → /odom_lko  (leg kinematics odometry, published by gait controller)
+```
+
+---
+
+## Key Source Files
+
+- `src/quadruped_gait_controller/quadruped_gait_controller/gait_node.py` — Diagonal trot gait with analytic 3-DOF IK. Publishes `/odom_lko` (leg kinematics odometry) in addition to joint commands. Phase A (0–0.5): FL+RR swing; Phase B: FR+RL swing. 50 Hz, 0.4s stride, 15mm step height.
+- `src/quadruped_gazebo/urdf/quadruped.urdf.xacro` — Robot URDF: 12 joints (hip_roll, hip_pitch, knee per leg), depth camera, IMU, RGB camera.
+- `src/quadruped_gazebo/config/ros2_control.yaml` — JointGroupPositionController mapping for all 12 joints.
+- `src/quadruped_gazebo/launch/gazebo.launch.py` — Spawns robot, loads controllers, starts ROS-Gazebo bridges.
+- `src/video_camera_sim/` — Plays pre-recorded video files as `/camera/image_raw` + `/camera/camera_info` for offline testing of perception and localization pipelines. Configurable FPS, loop, and camera intrinsics.
+- `src/monocular_depth/` — (Phase 2) Depth Anything V2 + Metric3D V2 inference node. TensorRT FP16 export for Jetson. Publishes metric depth and surface normals.
+- `src/elevation_mapping_cupy_pkg/` — GPU elevation map (3m×3m, 5cm resolution, 2 Hz). Ingests point cloud + surface normals for covariance-weighted fusion. Vendored `elevation_mapping_cupy` repo.
+- `src/traversability_estimation/` — (Phase 2) Computes traversability costmap from elevation map: slope angle, roughness (height variance), step height against leg reach limits. Publishes `nav_msgs/OccupancyGrid`.
+- `src/localization/` — (Phase 2) ORB-SLAM3 in RGBD mode (monocular depth as D channel) + `robot_localization` EKF fusing LKO + SLAM + IMU. LKO is the primary short-horizon source; SLAM provides loop-closure drift correction.
+- `src/nav2_mppi_navigation/nav2_mppi_navigation/config/nav2_mppi_params.yaml` — Nav2 + MPPI config. MPPI: 2000 rollouts, 56-step horizon, `Omni` motion model (quadruped is holonomic). Costmap reads `/traversability_costmap`, 4m×4m rolling window, 5cm resolution.
+- `src/nav2_mppi_navigation/nav2_mppi_navigation/launch/nav2_mppi.launch.py` — Phase 1: static `map→odom` TF. Phase 2+: consumes `/odom` + `/tf` from localization container.
+
+---
+
+## Localization Strategy
+
+| Source | Role | Failure mode |
+|---|---|---|
+| Leg kinematics odometry (LKO) | Primary short-horizon odometry | Drift on slippery/uneven terrain |
+| ORB-SLAM3 (RGBD, monocular depth as D) | Loop closure, long-horizon drift correction | Fails on texture-poor / dark environments |
+| IMU | Angular velocity + gravity vector | No position, biases over time |
+| `robot_localization` EKF | Fuses all three → `/odom` | Single point of failure; tune noise covariances carefully |
+
+LKO is the fallback when vision degrades. SLAM loop closure corrects accumulated LKO drift. Neither is used alone.
+
+---
+
+## Locomotion Strategy
+
+| Phase | Approach | Tradeoffs |
+|---|---|---|
+| 1–2 | Fixed diagonal trot, analytic IK | Simple, reliable on flat/mildly uneven terrain; no terrain adaptation |
+| 3 | Perceptive RL policy (Isaac Lab → TensorRT) | Graceful degradation on noisy monocular depth; zero-shot Jetson Orin transfer via NVIDIA-documented path; requires Isaac Lab training infrastructure |
+
+**Why RL over OCS2 MPC for Phase 3**: MPC-based foothold planning (e.g. `legged_perceptive`) requires accurate terrain geometry — sensitive to depth noise from monocular estimation. RL policies trained with domain randomization in Isaac Lab are more robust to noisy inputs, and NVIDIA provides a documented sim-to-real transfer path directly to Jetson Orin hardware.
+
+---
+
+## Multi-Vehicle Extensibility
+
+To add a new platform, implement the vehicle interface contract (see above) and provide a platform-specific odometry source and drive/gait controller. Nothing above the `/odom` + `/traversability_costmap` boundary changes.
+
+| Platform | Odometry source | Drive controller |
+|---|---|---|
+| Quadruped | LKO + ORB-SLAM3 EKF | Gait controller (trot / RL policy) |
+| Ackermann | Wheel encoder + GPS | `ackermann_steering_controller` (ros2_control) |
+| Tracked | Wheel encoder + IMU | Differential drive controller |
+| USV | GPS + DVL | Thruster controller |
+
+---
+
+## Adding a New Module
+
+1. Create `src/<module>/` with `package.xml`, `docker-compose.yaml`, and either `CMakeLists.txt` (C++) or `setup.py` (Python).
+2. Choose base image: `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` (CPU) or `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` (GPU/inference).
+3. Add `include: - path: src/<module>/docker-compose.yaml` to root `docker-compose.yaml`.
+4. Add the container name to the `CONTAINERS` array in `tmux-attach.sh`.
+5. Add at least one launch smoke test (node starts, required topics appear within 10s).
+
+---
+
+## Environment Variables (set in docker-compose)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ROS_DOMAIN_ID` | `0` | Isolate ROS 2 DDS domains |
+| `RMW_IMPLEMENTATION` | `rmw_cyclonedds_cpp` | DDS middleware |
+| `DISPLAY` / `XAUTHORITY` | from host | Gazebo and standalone RViz GUIs via X11 |
+| `NVIDIA_VISIBLE_DEVICES` | `all` | GPU access in CUDA/PyTorch containers |
+| `CUDA_VISIBLE_DEVICES` | `0` | Single GPU, avoids allocation conflicts |
+
+---
+
+## Known Limitations & Open Decisions
+
+- **Stereo trade-off**: NVIDIA Isaac ROS (`isaac_ros_dnn_stereo_depth`, cuVSLAM, FoundationStereo) is significantly richer for stereo pairs. If a second camera is affordable, stereo should be reconsidered before committing to monocular-only for Phase 2.
+- **MPPI motion model**: Currently `DiffDrive` in Phase 1. Must be switched to `Omni` for holonomic quadruped motion. Tune `vy_max` to match actual lateral gait speed.
+- **Traversability costmap resolution**: 5cm grid at 3m×3m is appropriate for indoor/controlled outdoor. Expand to 10m×10m for open terrain but watch GPU memory on Orin Nano.
+- **ORB-SLAM3 in RGBD mode**: Uses monocular depth as the D channel, not a true stereo pair. Scale is metric-consistent only if Depth Anything V2 output is metric-accurate. Validate carefully on real hardware.
+- **QGroundControl integration**: Planned. Requires MAVLink bridge (`MAVROS` or `px4_ros_com`) publishing mission waypoints as `nav2_msgs/action/NavigateThroughPoses`.
+
+
+
+
+## Current Target
+
+Currently my target is to create an elevation map using offline recorded video. Using pose from ORB-SLAM3 and points from DepthAnythingV2.
+
+Step 0: Publish video from a file - done
+Step 1: Get monodepth working - done
+Step 2: Get pointclouds published from monodepth - done
+Step 3: Get SLAM working - done
+Step 4: Integrate SLAM TF with pointclouds from monodepth - we are herr
+
+For this step we need to fix the TF tree.

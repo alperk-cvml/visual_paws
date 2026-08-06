@@ -16,6 +16,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from nav2_common.launch import ReplaceString
 
 
 def generate_launch_description():
@@ -40,6 +41,16 @@ def generate_launch_description():
         description='OccupancyGrid topic from elevation_mapping_cupy')
 
     params_file = os.path.join(pkg_share, 'config', 'nav2_mppi_params.yaml')
+    configured_params = ReplaceString(
+        source_file=params_file,
+        replacements={
+            '<map_frame>': LaunchConfiguration('map_frame'),
+            '<odom_frame>': LaunchConfiguration('odom_frame'),
+            '<base_frame>': LaunchConfiguration('base_frame'),
+            '<occupancy_grid_topic>': LaunchConfiguration(
+                'occupancy_grid_topic'),
+        },
+    )
 
     # ── Nav2 navigation stack (no map_server; costmap reads /occupancy_grid) ─
     nav2_launch = IncludeLaunchDescription(
@@ -48,7 +59,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'params_file': params_file,
+            'params_file': configured_params,
             'use_composition': 'False',
             'use_respawn': 'False',
             'use_collision_monitor': 'False',

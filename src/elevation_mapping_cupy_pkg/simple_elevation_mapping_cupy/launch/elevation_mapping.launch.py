@@ -21,6 +21,10 @@ def generate_launch_description():
         'base_frame_id', default_value='base_link',
         description='Base frame id'
     )
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time', default_value='true',
+        description='Use a ROS simulation clock'
+    )
 
     elevation_mapping_cupy_share = get_package_share_directory('elevation_mapping_cupy')
     core_param_path = os.path.join(elevation_mapping_cupy_share, 'config', 'core', 'core_param.yaml')
@@ -38,7 +42,7 @@ def generate_launch_description():
                 'map_frame': LaunchConfiguration('map_frame_id'),
                 'base_frame': LaunchConfiguration('base_frame_id'),
                 'corrected_map_frame': LaunchConfiguration('map_frame_id'),
-                'use_sim_time': True,
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
             }
         ],
         remappings=[
@@ -55,7 +59,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             grid_map_vis_config,
-            {'use_sim_time': True}
+            {'use_sim_time': LaunchConfiguration('use_sim_time')}
         ]
     )
 
@@ -63,6 +67,7 @@ def generate_launch_description():
         input_pointcloud_topic_arg,
         map_frame_id_arg,
         base_frame_id_arg,
+        use_sim_time_arg,
         elevation_mapping_node,
         grid_map_vis_node
     ])

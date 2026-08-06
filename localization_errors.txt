@@ -1,0 +1,481 @@
+time="2026-07-01T14:13:36+03:00" level=warning msg="/home/alper/git/visual_paws/src/localization/docker-compose.yaml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Image localization:jazzy Building 
+Attaching to depth_image_proc, elevation_mapping_cupy, localization, monocular_depth, nav2_mppi_navigation, quadruped_gait_controller, quadruped_gazebo, quadruped_test_controller, video_camera_sim
+ Container localization Starting 
+ Container localization Started 
+localization          | Starting >>> localization
+quadruped_gazebo      | Starting >>> localization
+localization          | --- stderr: localization
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/ament_cmake_symlink_install-extras.cmake:41 (configure_file):
+localization          |   Operation not permitted
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/ament_cmake_coreConfig.cmake:41 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake/cmake/ament_cmake_export_dependencies-extras.cmake:15 (find_package)
+localization          |   /opt/ros/jazzy/share/ament_cmake/cmake/ament_cmakeConfig.cmake:41 (include)
+localization          |   CMakeLists.txt:12 (find_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_targets.cmake:111 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:37 (ament_cmake_symlink_install_targets)
+localization          |   CMakeLists.txt:101 (install)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_targets.cmake:111 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:37 (ament_cmake_symlink_install_targets)
+localization          |   CMakeLists.txt:101 (install)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_directory.cmake:74 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:28 (ament_cmake_symlink_install_directory)
+localization          |   CMakeLists.txt:105 (install)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_directory.cmake:74 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:28 (ament_cmake_symlink_install_directory)
+localization          |   CMakeLists.txt:105 (install)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_directory.cmake:74 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:28 (ament_cmake_symlink_install_directory)
+localization          |   CMakeLists.txt:109 (install)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_directory.cmake:74 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:28 (ament_cmake_symlink_install_directory)
+localization          |   CMakeLists.txt:109 (install)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_resource.cmake:105 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:29 (ament_index_register_resource)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:47 (ament_cmake_environment_generate_package_run_dependencies_marker)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_resource.cmake:105 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:29 (ament_index_register_resource)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:47 (ament_cmake_environment_generate_package_run_dependencies_marker)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_resource.cmake:105 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:43 (ament_index_register_resource)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:48 (ament_cmake_environment_generate_parent_prefix_path_marker)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_resource.cmake:105 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:43 (ament_index_register_resource)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment/ament_cmake_environment_package_hook.cmake:48 (ament_cmake_environment_generate_parent_prefix_path_marker)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:70 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:70 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:87 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:87 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:70 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:70 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:87 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_environment_hooks.cmake:87 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:20 (ament_environment_hooks)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:91 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:91 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:91 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:91 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:91 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:91 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:107 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:107 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:120 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_generate_package_environment.cmake:120 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/environment_hooks/ament_cmake_environment_hooks_package_hook.cmake:26 (ament_generate_package_environment)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_resource.cmake:105 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_package.cmake:29 (ament_index_register_resource)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_cmake_index_package_hook.cmake:16 (ament_index_register_package)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_resource.cmake:105 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_index_register_package.cmake:29 (ament_index_register_resource)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/index/ament_cmake_index_package_hook.cmake:16 (ament_index_register_package)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_execute_extensions.cmake:48 (include)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:66 (ament_execute_extensions)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:150 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:68 (_ament_package)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:150 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:68 (_ament_package)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:28 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:157 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:68 (_ament_package)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | CMake Error at /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_append_install_code.cmake:32 (file):
+localization          |   file failed to open for writing (Permission denied):
+localization          | 
+localization          |     /work/ws/build/localization/ament_cmake_symlink_install/ament_cmake_symlink_install.cmake
+localization          | Call Stack (most recent call first):
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/ament_cmake_symlink_install_files.cmake:45 (ament_cmake_symlink_install_append_install_code)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/symlink_install/install.cmake:31 (ament_cmake_symlink_install_files)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:157 (install)
+localization          |   /opt/ros/jazzy/share/ament_cmake_core/cmake/core/ament_package.cmake:68 (_ament_package)
+localization          |   CMakeLists.txt:113 (ament_package)
+localization          | 
+localization          | 
+localization          | ---
+localization          | Failed   <<< localization [1.24s, exited with code 1]
+localization          | 
+localization          | Summary: 0 packages finished [1.41s]
+localization          |   1 package failed: localization
+localization          |   1 package had stderr output: localization
+[Klocalization exited with code 1
+quadruped_gazebo      | --- stderr: localization
+quadruped_gazebo      | Failed   <<< localization [1.38s, exited with code 1]
+quadruped_gazebo      |   1 package failed: localization
+quadruped_gazebo      |   1 package had stderr output: localization
+video_camera_sim      | not found: "/work/ws/install/localization/share/localization/local_setup.bash"
+ Container localization Stopping 
+ Container localization Stopped 

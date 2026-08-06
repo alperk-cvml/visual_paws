@@ -13,6 +13,7 @@
 
 CONTAINERS=(
   quadruped_gazebo
+  rviz
   depth_image_proc
  # elevation_mapping
   elevation_mapping_cupy

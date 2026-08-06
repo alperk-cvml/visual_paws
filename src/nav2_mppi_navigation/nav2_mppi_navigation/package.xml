@@ -8,6 +8,7 @@
   <license>Apache-2.0</license>
 
   <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_common</exec_depend>
   <exec_depend>nav2_mppi_controller</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>nav2_lifecycle_manager</exec_depend>

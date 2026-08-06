@@ -17,10 +17,11 @@ services:
 
       # Topic remapping
       - DEPTH_IMAGE_TOPIC=${DEPTH_IMAGE_TOPIC:-depth/image_raw}
-      - CAMERA_INFO_TOPIC=${CAMERA_INFO_TOPIC:-/depth/camera_info}
+      - DEPTH_CAMERA_INFO_TOPIC=${DEPTH_CAMERA_INFO_TOPIC:-/depth/camera_info}
       # - DEPTH_IMAGE_TOPIC=${DEPTH_IMAGE_TOPIC:-/depth_camera/depth/image_raw}
       #- CAMERA_INFO_TOPIC=${CAMERA_INFO_TOPIC:-/depth_camera/depth/camera_info}
       - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/points}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
 
     volumes:
       # Your ROS2 workspace
@@ -36,5 +37,5 @@ services:
       bash -lc "
         set -e;
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
-        ros2 run depth_image_proc point_cloud_xyz_node --ros-args -r __node:=point_cloud_xyz_node -r image_rect:=$${DEPTH_IMAGE_TOPIC} -r camera_info:=$${CAMERA_INFO_TOPIC} -r points:=$${POINTCLOUD_TOPIC} -p use_sim_time:=true
+        ros2 run depth_image_proc point_cloud_xyz_node --ros-args -r __node:=point_cloud_xyz_node -r image_rect:=$${DEPTH_IMAGE_TOPIC} -r camera_info:=$${DEPTH_CAMERA_INFO_TOPIC} -r points:=$${POINTCLOUD_TOPIC} -p use_sim_time:=$${USE_SIM_TIME}
       "
