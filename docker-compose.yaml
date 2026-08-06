@@ -9,6 +9,7 @@
 
 include:
   - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
   - path: src/dept_image_proc/docker-compose.yaml
   - path: src/elevation_mapping_cupy_pkg/docker-compose.yaml
   - path: src/quadruped_gait_controller/docker-compose.yaml

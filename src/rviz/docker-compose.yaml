@@ -1,0 +1,44 @@
+services:
+  rviz:
+    image: visual-paws-rviz:jazzy
+    container_name: rviz
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # X11
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=/tmp/.docker.xauth
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+
+      # The source-tree path avoids coupling RViz startup to a package build.
+      - RVIZ_CONFIG=${RVIZ_CONFIG:-/work/ws/src/rviz/config/visual_paws.rviz}
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
+      - ../..:/work/ws:ro
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    network_mode: host
+    ipc: host
+
+    command: |
+      bash -lc "
+        set -e;
+        source /opt/ros/jazzy/setup.bash;
+        ros2 run rviz2 rviz2 \
+          -d \"$${RVIZ_CONFIG}\" \
+          --ros-args -p use_sim_time:=$${USE_SIM_TIME}
+      "

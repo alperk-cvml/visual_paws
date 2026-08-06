@@ -1,0 +1,18 @@
+# Root compose file — delegates to each module's own docker-compose.yaml.
+# Requires Docker Compose v2.20+ (compose-spec `include` support).
+#
+# Usage (from repo root):
+#   docker compose --env-file offline-video.env \
+#     -f docker-compose-camera-pipeline.yaml up --build
+#
+# This pipeline is intentionally independent of Gazebo. ORB-SLAM publishes
+# map->base_link and the localization launch supplies the camera extrinsics.
+# RViz runs as an independent visualization service.
+
+include:
+  - path: src/rviz/docker-compose.yaml
+  - path: src/video_camera_sim/docker-compose.yaml
+  - path: src/monocular_depth/docker-compose.yaml
+  - path: src/dept_image_proc/docker-compose.yaml
+  - path: src/localization/docker-compose.yaml
+  - path: src/elevation_mapping_cupy_pkg/docker-compose.yaml
