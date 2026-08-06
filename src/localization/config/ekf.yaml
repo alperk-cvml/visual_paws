@@ -1,3 +1,6 @@
+# LEGACY SINGLE-FILTER CONFIGURATION.
+# This file is retained for reference and is not loaded by localization.launch.py.
+# Active configurations are ekf_local.yaml and ekf_global.yaml.
 # ──────────────────────────────────────────────────────────────────────────────
 # robot_localization EKF Configuration — Visual Paws Quadruped
 #
