@@ -18,6 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Modular, not end-to-end**: Each layer is independently replaceable. AI is injected only at the locomotion layer (Phase 3 RL policy), not throughout the stack. This preserves debuggability, multi-vehicle reuse, and open-source reference value.
 - **Vehicle-agnostic above the odometry boundary**: All platforms publish `nav_msgs/Odometry` + a traversability costmap. Elevation mapping, traversability, MPPI, and localization layers are shared across vehicle types. Only the odometry source and gait/drive controller differ per platform.
 - **Docker-first**: Every module has its own `Dockerfile` and `docker-compose.yaml`. No bare-metal ROS installs.
+- **Uncertainty is explicit**: Depth estimates carry per-pixel variance. This is an interface contract, not an optional extra.
 - **Production hygiene from the start**: CI, unit tests, quantitative metrics, and honest trade-off documentation are built-in, not afterthoughts.
 
 ---
@@ -30,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **Phase 2** | Traversability-aware routing, real depth inference, real localization | Fixed trot + terrain cost |
 | **Phase 3** | Perceptive locomotion on real hardware; Isaac Lab RL policy | Perceptive RL policy (Isaac Lab → Jetson) |
 
-> Current state: Phase 1 (Gazebo sim, fake localization). Phase 2 work begins once the sim pipeline is validated end-to-end.
+> Current state: **Phase 2** — offline video pipeline operational (video replay → DA-V2 depth → ORB-SLAM3 localization → GPU elevation mapping). Gazebo sim pipeline also functional. Step 5 (elevation map accumulation from offline video) is the active work item.
 
 ---
 
@@ -45,11 +46,22 @@ xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f $XAUTH nmerge -
 ```
 
 ### Start All Containers
+
+**Gazebo simulation** (full sim pipeline):
 ```bash
 docker compose up -d --build     # build images and start in background
 ./tmux-attach.sh                 # attach to quadruped_gazebo tmux session
 ./tmux-attach.sh --detach        # create all tmux sessions without attaching
 ```
+
+**Offline video pipeline** (recorded video → depth estimation → SLAM → elevation map):
+```bash
+docker compose --env-file offline-video.env up -d --build
+```
+
+The `offline-video.env` profile sets `LOCALIZATION_MODE=offline_video` (ORB-SLAM3 directly owns `map→base_link`), `USE_SIM_TIME=false`, configures topic remappings, and adds a startup delay for model loading. See `offline-video.env` for all variables.
+
+> **Note**: Place your video file at `videos/INPUT.MOV` (relative to repo root), or override `VIDEO_PATH` in `offline-video.env`.
 
 ### Inside Containers (ROS 2 Workspace)
 ```bash
@@ -73,6 +85,112 @@ ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}"
 ```
 
 ---
+
+
+## ROS 2 Conventions & TF Standards
+ 
+All code must follow **REP-105** (coordinate frames) and **REP-103** (units/axes). Non-compliant frame names or tree structures are bugs, not style issues.
+ 
+### Coordinate Conventions (REP-103)
+- x forward, y left, z up (right-hand rule)
+- Angles in radians, right-hand rule about z (counter-clockwise positive)
+- Units: metres, seconds, radians throughout. No millimetres, degrees, or mixed units.
+### Canonical Frame Names (REP-105)
+ 
+| Frame | Meaning |
+|---|---|
+| `map` | Fixed world frame; origin set at ORB-SLAM3 init |
+| `odom` | Continuous odometry frame; no discrete jumps |
+| `base_link` | Robot body centre (rigid body) |
+| `base_footprint` | Projection of `base_link` onto ground plane |
+| `camera_link` | Camera rigid body origin |
+| `camera_optical` | Camera optical frame (z forward, x right, y down) |
+| `imu_link` | IMU sensor frame |
+ 
+**Never invent frame names** (`robot`, `world`, `camera_frame`, `base`, `map_frame`). Use the names above. New sensor frames follow `<sensor>_link` (rigid body) and `<sensor>_optical` (optical frame).
+ 
+### Authoritative TF Tree
+ 
+```
+map
+└── odom                     (publisher: robot_localization EKF; Phase 1: static TF)
+    └── base_link            (publisher: robot_localization EKF / ros2_control)
+        ├── base_footprint   (publisher: robot_state_publisher, static)
+        ├── imu_link         (publisher: robot_state_publisher, static)
+        ├── camera_link      (publisher: robot_state_publisher, static)
+        │   └── camera_optical (publisher: robot_state_publisher, static)
+        └── [leg frames]     (publisher: robot_state_publisher, from joint states)
+```
+ 
+Rules:
+- **Each TF edge has exactly one publisher.** Adding a publisher means removing the old one. Duplicate publishers cause nondeterministic tf2 conflicts.
+- ORB-SLAM3 publishes **`map→odom`**, not `map→base_link`. It corrects drift via the odom frame, leaving `odom→base_link` to odometry/EKF.
+- Static transforms come from `robot_state_publisher` or `static_transform_publisher` — never a dynamic publisher emitting fixed values.
+- `elevation_mapping_cupy` fixed frame is **`map`** in offline-video mode (ORB-SLAM3 owns `map→base_link` directly). In Gazebo sim with dual-EKF, use **`odom`** — elevation mapping must run in a *smooth* frame; `map` frame discontinuities from loop closure would corrupt accumulated point clouds.
+- **Point clouds from `depth_image_proc` are in `camera_link_optical` and carry the source image timestamp. Never restamp or reframe them.** This is the single most common Step 4 failure.
+---
+ 
+## Offline Video Workflow
+ 
+The offline pipeline processes pre-recorded video files through the full perception-to-mapping stack without Gazebo or live sensors.
+ 
+### Pipeline
+```
+video file → video_camera_sim → /camera/image_raw
+                                    ↓
+                              monocular_depth (DA-V2) → /depth/image_raw
+                                    ↓
+                              depth_image_proc → /depth_camera/points
+                                    ↓
+          ORB-SLAM3 (localization) ← /camera/image_raw
+              ↓ TF: map→base_link
+          elevation_mapping_cupy ← /depth_camera/points + TF
+              ↓
+          /elevation_map (GridMap)
+```
+
+### Launch
+```bash
+docker compose --env-file offline-video.env up -d --build
+```
+
+### Key differences from Gazebo sim
+| Aspect | Gazebo sim | Offline video |
+|---|---|---|
+| `USE_SIM_TIME` | `true` | `false` |
+| `LOCALIZATION_MODE` | `slam` (dual-EKF) | `offline_video` (ORB-SLAM owns `map→base_link`) |
+| TF for `base_link→camera_link` | `robot_state_publisher` | Static TF from launch file |
+| Depth source | Ground-truth depth camera | Depth Anything V2 (monocular inference) |
+| Elevation map frame | `odom` | `map` |
+
+### Rules
+- **`offline-video.env` is the single source of truth** for the offline pipeline. All topic names, frame IDs, and mode switches are set there.
+- **`VIDEO_START_DELAY`** (default 20s) gives ORB-SLAM3 vocabulary and DA-V2 model time to load before video playback starts. Reduce only if models are pre-cached.
+- **`VIDEO_LOOP=false`** — looping resets image motion while retaining the SLAM map, corrupting localization.
+- Every node runs with `use_sim_time: false` — wall-clock timestamps are used throughout.
+---
+ 
+## Sim vs. Real Topic Names
+ 
+The same pipeline runs against two sources. Do not hardcode either.
+ 
+| Role | Gazebo (Phase 1) | Real / bag (Phase 2+) |
+|---|---|---|
+| RGB image | `/front_camera/image_raw` | `/camera/image_raw` |
+| Depth image | `/depth_camera/image_raw` (ground truth) | `/depth/image_raw` (DA-V2 inferred) |
+| Camera info | `/depth_camera/camera_info` | `/camera/camera_info` |
+| Point cloud | `/depth_camera/points` | `/depth/points` |
+ 
+All topic names must be remappable via launch arguments. Nodes that hardcode topic names break the sim/real switch.
+ 
+> **Critical**: Gazebo depth is ground truth. Real depth is *inferred* and carries
+> scale/shift error that varies per frame. **Gazebo cannot validate the perception
+> stack.** Geometry, integration, and planning logic are testable in sim; DA-V2,
+> ORB-SLAM3, and real camera behaviour (auto-exposure, rolling shutter, motion
+> blur) require recorded footage via the offline video pipeline as a separate test bench.
+ 
+---
+
 
 ## Architecture
 
@@ -319,18 +437,35 @@ To add a new platform, implement the vehicle interface contract (see above) and 
 |---|---|---|
 | `ROS_DOMAIN_ID` | `0` | Isolate ROS 2 DDS domains |
 | `RMW_IMPLEMENTATION` | `rmw_cyclonedds_cpp` | DDS middleware |
-| `DISPLAY` / `XAUTHORITY` | from host | Gazebo and standalone RViz GUIs via X11 |
+| `DISPLAY` / `XAUTHORITY` | from host | Gazebo, RViz, and ORB-SLAM3 viewer GUIs via X11 |
 | `NVIDIA_VISIBLE_DEVICES` | `all` | GPU access in CUDA/PyTorch containers |
 | `CUDA_VISIBLE_DEVICES` | `0` | Single GPU, avoids allocation conflicts |
+
+### Offline Video Profile (`offline-video.env`)
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `USE_SIM_TIME` | `false` | Wall-clock timestamps (no `/clock` topic) |
+| `LOCALIZATION_MODE` | `offline_video` | ORB-SLAM3 owns `map→base_link` directly |
+| `MODE` | `RGBD` | ORB-SLAM3 tracking mode |
+| `ENABLE_VIEWER` | `true` | ORB-SLAM3 Pangolin viewer |
+| `VIDEO_PATH` | `/work/ws/videos/INPUT.MOV` | Input video file path |
+| `VIDEO_LOOP` | `false` | Single playthrough (loop corrupts SLAM) |
+| `VIDEO_FPS` | `10.0` | Playback frame rate |
+| `VIDEO_START_DELAY` | `20.0` | Seconds to wait for model loading |
+| `POINTCLOUD_TOPIC` | `/depth_camera/points` | Point cloud topic for elevation mapping |
+| `MAP_FRAME_ID` | `map` | Elevation map fixed frame |
+| `FRAME_ID` | `camera_link_optical` | Camera frame for video publisher |
 
 ---
 
 ## Known Limitations & Open Decisions
 
-- **Stereo trade-off**: NVIDIA Isaac ROS (`isaac_ros_dnn_stereo_depth`, cuVSLAM, FoundationStereo) is significantly richer for stereo pairs. If a second camera is affordable, stereo should be reconsidered before committing to monocular-only for Phase 2.
-- **MPPI motion model**: Currently `DiffDrive` in Phase 1. Must be switched to `Omni` for holonomic quadruped motion. Tune `vy_max` to match actual lateral gait speed.
+- **Stereo trade-off**: NVIDIA Isaac ROS (`isaac_ros_dnn_stereo_depth`, cuVSLAM, FoundationStereo) is significantly richer for stereo pairs. If a second camera is affordable, stereo should be reconsidered before committing to monocular-only.
+- **MPPI motion model**: Currently `Omni` for holonomic quadruped motion. Tune `vy_max` to match actual lateral gait speed.
 - **Traversability costmap resolution**: 5cm grid at 3m×3m is appropriate for indoor/controlled outdoor. Expand to 10m×10m for open terrain but watch GPU memory on Orin Nano.
-- **ORB-SLAM3 in RGBD mode**: Uses monocular depth as the D channel, not a true stereo pair. Scale is metric-consistent only if Depth Anything V2 output is metric-accurate. Validate carefully on real hardware.
+- **ORB-SLAM3 monocular scale**: In `MONOCULAR` mode, ORB-SLAM3 scale is metric-consistent only if Depth Anything V2 output is metric-accurate. In `RGBD` mode with monocular depth as the D channel, scale comes from the depth network. Validate carefully on real hardware.
+- **Elevation map frame in offline mode**: Using `map` frame works when ORB-SLAM3 drift is small. For longer sequences with loop closures, the map frame may have discontinuities that affect elevation map coherence.
 - **QGroundControl integration**: Planned. Requires MAVLink bridge (`MAVROS` or `px4_ros_com`) publishing mission waypoints as `nav2_msgs/action/NavigateThroughPoses`.
 
 
@@ -338,12 +473,12 @@ To add a new platform, implement the vehicle interface contract (see above) and 
 
 ## Current Target
 
-Currently my target is to create an elevation map using offline recorded video. Using pose from ORB-SLAM3 and points from DepthAnythingV2.
+Creating an elevation map from offline recorded video using pose from ORB-SLAM3 and point clouds from Depth Anything V2.
 
-Step 0: Publish video from a file - done
-Step 1: Get monodepth working - done
-Step 2: Get pointclouds published from monodepth - done
-Step 3: Get SLAM working - done
-Step 4: Integrate SLAM TF with pointclouds from monodepth - we are herr
+- [x] Step 0: Publish video from a file (`video_camera_sim`)
+- [x] Step 1: Get monocular depth working (`monocular_depth` / Depth Anything V2)
+- [x] Step 2: Get point clouds published from monocular depth (`depth_image_proc`)
+- [x] Step 3: Get SLAM working (`localization` / ORB-SLAM3)
+- [x] Step 4: Integrate SLAM TF with point clouds from monocular depth
+- [ ] Step 5: Elevation map accumulating correctly from replayed video
 
-For this step we need to fix the TF tree.

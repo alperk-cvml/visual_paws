@@ -46,12 +46,23 @@ Failure to align with the constraints listed in `CLAUDE.md` and this `AGENTS.md`
 
 ## Current Target
 
-Currently my target is to create an elevation map using offline recorded video. Using pose from ORB-SLAM3 and points from DepthAnythingV2.
+Creating an elevation map from offline recorded video using pose from ORB-SLAM3 and point clouds from Depth Anything V2.
 
-Step 0: Publish video from a file - done
-Step 1: Get monodepth working - done
-Step 2: Get pointclouds published from monodepth - done
-Step 3: Get SLAM working - done
-Step 4: Integrate SLAM TF with pointclouds from monodepth - we are herr
+- [x] Step 0: Publish video from a file (`video_camera_sim`)
+- [x] Step 1: Get monocular depth working (`monocular_depth` / Depth Anything V2)
+- [x] Step 2: Get point clouds published from monocular depth (`depth_image_proc`)
+- [x] Step 3: Get SLAM working (`localization` / ORB-SLAM3)
+- [x] Step 4: Integrate SLAM TF with point clouds from monocular depth
+- [ ] Step 5: Elevation map accumulating correctly from replayed video
 
-For this step we need to fix the TF tree.
+### Offline Video Launch
+
+The offline pipeline is launched with an env-file override:
+
+```bash
+docker compose --env-file offline-video.env up -d --build
+```
+
+This sets `LOCALIZATION_MODE=offline_video` (ORB-SLAM3 directly publishes `map→base_link`), `USE_SIM_TIME=false`, and wires all topic remappings. Without the env file, containers fall back to Gazebo simulation defaults.
+
+**Important**: Agents must ensure `offline-video.env` variables are respected when modifying docker-compose files or launch parameters. The env file is the single source of truth for the offline pipeline configuration.
