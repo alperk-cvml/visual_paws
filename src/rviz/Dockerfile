@@ -14,4 +14,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 WORKDIR /work/ws
 
+# Copy default RViz configuration so it is built into the image as a fallback
+COPY config/visual_paws.rviz /opt/rviz/config/visual_paws.rviz
+
 CMD ["bash"]

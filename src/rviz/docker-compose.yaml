@@ -33,12 +33,16 @@ services:
 
     network_mode: host
     ipc: host
+    working_dir: /work/ws
 
     command: |
       bash -lc "
         set -e;
         source /opt/ros/jazzy/setup.bash;
-        ros2 run rviz2 rviz2 \
-          -d \"$${RVIZ_CONFIG}\" \
-          --ros-args -p use_sim_time:=$${USE_SIM_TIME}
+        CFG_FILE=\"$${RVIZ_CONFIG}\";
+        if [ ! -f \"$${CFG_FILE}\" ]; then
+          echo \"Config file $${CFG_FILE} not found. Falling back to baked-in config at /opt/rviz/config/visual_paws.rviz\";
+          CFG_FILE=\"/opt/rviz/config/visual_paws.rviz\";
+        fi;
+        ros2 run rviz2 rviz2 -d \"$${CFG_FILE}\" --ros-args -p use_sim_time:=$${USE_SIM_TIME}
       "
