@@ -42,6 +42,8 @@ services:
     # Host networking for seamless ROS 2 DDS discovery
     network_mode: host
     ipc: host
+    stdin_open: true
+    tty: true
 
     command: >
       bash -lc "
