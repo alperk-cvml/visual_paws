@@ -1,9 +1,9 @@
-/**:
+/elevation_mapping_node:
   ros__parameters:
     # One pointcloud input
     subscribers:
       depth:
-        topic_name: "/camera/depth/points"
+        topic_name: "/depth_camera/points"
         data_type: "pointcloud"
 
     enable_drift_compensation: false
@@ -57,7 +57,7 @@
     checker_layer: elevation
     cleanup_cos_thresh: 0.1
     cleanup_step: 0.1
-    corrected_map_frame: odom
+    corrected_map_frame: map
     dilation_size: 3
     dilation_size_initialize: 2
     drift_compensation_alpha: 0.1
@@ -79,7 +79,7 @@
     initialized_variance: 10.0
     mahalanobis_thresh: 100.0
     map_acquire_fps: 5.0
-    map_frame: odom
+    map_frame: map
     map_length: 20.0
     masked_replace_service_mask_layer_name: mask
     max_drift: 0.1

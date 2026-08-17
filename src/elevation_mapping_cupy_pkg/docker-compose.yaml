@@ -21,10 +21,10 @@ services:
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
 
       # Input — point cloud
-      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/depth_image/points}
+      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/points}
 
-      # Coordinate frames
-      - MAP_FRAME_ID=${MAP_FRAME_ID:-odom}
+      # Frame configuration (map_frame, base_frame, corrected_map_frame) is
+      # set in elevation_mapping.yaml, NOT via env vars or launch arguments.
       - USE_SIM_TIME=${USE_SIM_TIME:-true}
 
       # Map geometry
@@ -55,6 +55,5 @@ services:
         source /work/ws/install/setup.bash;
         ros2 launch simple_elevation_mapping_cupy elevation_mapping.launch.py \
           input_pointcloud_topic:=$${POINTCLOUD_TOPIC} \
-          map_frame_id:=$${MAP_FRAME_ID} \
           use_sim_time:=$${USE_SIM_TIME}
       "
