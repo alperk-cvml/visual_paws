@@ -14,12 +14,19 @@ Published topics:
 """
 
 import time
+import sys
+import os
+import select
+import termios
+import tty
+import threading
 
 import cv2
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image, CameraInfo
+from std_msgs.msg import String
 from cv_bridge import CvBridge
 
 
@@ -33,6 +40,7 @@ class VideoNode(Node):
         self.declare_parameter('video_path', '/videos/input.mp4')
         self.declare_parameter('fps', 10.0)
         self.declare_parameter('loop', True)
+        self.declare_parameter('paused', False)
         self.declare_parameter('image_topic', '/camera/image_raw')
         self.declare_parameter('camera_info_topic', '/camera/camera_info')
         self.declare_parameter('frame_id', 'camera_link_optical')
@@ -60,6 +68,11 @@ class VideoNode(Node):
             self.loop = bool(self.get_parameter('loop').value)
         except (ValueError, TypeError):
             self.loop = True
+
+        try:
+            self.is_paused = bool(self.get_parameter('paused').value)
+        except (ValueError, TypeError):
+            self.is_paused = False
 
         try:
             self.width = int(self.get_parameter('width').value)
@@ -122,7 +135,8 @@ class VideoNode(Node):
             f'  Total frames: {self.total_frames}\n'
             f'  Publish FPS:  {self.fps:.1f}\n'
             f'  Start delay:  {self.start_delay:.1f}s\n'
-            f'  Loop:         {self.loop}'
+            f'  Loop:         {self.loop}\n'
+            f'  Paused:       {self.is_paused}'
         )
 
         # ── CV bridge ─────────────────────────────────────────────────────
@@ -158,6 +172,72 @@ class VideoNode(Node):
         # ── Parameter callback for dynamic adjustments ───────────────────
         self.add_on_set_parameters_callback(self._on_parameters_changed)
 
+        # ── Control Subscriber ───────────────────────────────────────────
+        self.control_sub = self.create_subscription(
+            String,
+            '/video_camera_sim/control',
+            self._control_callback,
+            10
+        )
+
+        # ── Keyboard listener ─────────────────────────────────────────────
+        self._start_keyboard_listener()
+
+    def _control_callback(self, msg: String):
+        """Callback to handle playback control commands sent over ROS 2 topic."""
+        cmd = msg.data.strip().lower()
+        if cmd in ['space', 'pause', 'resume', 'toggle']:
+            self.toggle_pause()
+        elif cmd in ['up', 'faster', 'increase', '+']:
+            self.increase_speed()
+        elif cmd in ['down', 'slower', 'decrease', '-']:
+            self.decrease_speed()
+        else:
+            self.get_logger().warn(
+                f"Unknown control command: '{msg.data}'. Valid commands: 'space', 'up', 'down'"
+            )
+
+    def _set_fps(self, new_fps: float):
+        """Helper to update playback FPS and recreate the timer."""
+        if abs(self.fps - new_fps) < 1e-3:
+            return
+        self.fps = new_fps
+        if hasattr(self, 'timer') and self.timer is not None:
+            self.timer.cancel()
+            timer_period = 1.0 / self.fps
+            self.timer = self.create_timer(timer_period, self._timer_callback)
+        self.get_logger().info(f'⚡ Playback speed updated to: {self.fps:.1f} Hz (period: {1.0/self.fps:.3f}s)')
+
+    def increase_speed(self):
+        """Increase playback speed/FPS."""
+        if self.fps < 5.0:
+            step = 0.5
+        elif self.fps < 20.0:
+            step = 1.0
+        else:
+            step = 2.0
+        new_fps = min(120.0, round(self.fps + step, 1))
+        self._set_fps(new_fps)
+
+    def decrease_speed(self):
+        """Decrease playback speed/FPS."""
+        if self.fps <= 5.0:
+            step = 0.5
+        elif self.fps <= 20.0:
+            step = 1.0
+        else:
+            step = 2.0
+        new_fps = max(0.5, round(self.fps - step, 1))
+        self._set_fps(new_fps)
+
+    def toggle_pause(self):
+        """Toggle pause/resume state."""
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            self.get_logger().info('⏸ Playback PAUSED (press SPACE to resume)')
+        else:
+            self.get_logger().info('▶ Playback RESUMED')
+
     def _on_parameters_changed(self, params):
         """Callback to handle dynamic parameters updates at runtime."""
         from rcl_interfaces.msg import SetParametersResult
@@ -169,16 +249,14 @@ class VideoNode(Node):
                     new_fps = float(param.value)
                     if new_fps <= 0:
                         raise ValueError("FPS must be greater than 0")
-                    self.fps = new_fps
-                    
-                    # Update the timer
-                    self.timer.cancel()
-                    timer_period = 1.0 / self.fps
-                    self.timer = self.create_timer(timer_period, self._timer_callback)
-                    self.get_logger().info(f'Updated publish FPS dynamically to: {self.fps:.1f} Hz')
+                    self._set_fps(new_fps)
                 except Exception as e:
                     result.successful = False
                     result.reason = f"Invalid FPS: {e}"
+            elif param.name == 'paused':
+                self.is_paused = bool(param.value)
+                status = 'PAUSED' if self.is_paused else 'RESUMED'
+                self.get_logger().info(f'Updated paused parameter dynamically to: {status}')
             elif param.name == 'width':
                 try:
                     new_width = int(param.value)
@@ -243,9 +321,106 @@ class VideoNode(Node):
         return msg
 
     # ──────────────────────────────────────────────────────────────────────
+    # Interactive Keyboard Listener
+    # ──────────────────────────────────────────────────────────────────────
+    def _get_tty_stream(self):
+        """Finds an available TTY stream for reading keyboard input."""
+        # 1. Try sys.stdin
+        if sys.stdin and sys.stdin.isatty():
+            return sys.stdin, sys.stdin.fileno(), False
+        # 2. Try opening /dev/tty directly (useful when spawned by ros2 launch without PTY)
+        try:
+            tty_file = open('/dev/tty', 'r')
+            if os.isatty(tty_file.fileno()):
+                return tty_file, tty_file.fileno(), True
+        except Exception:
+            pass
+        return None, -1, False
+
+    def _start_keyboard_listener(self):
+        """Starts a daemon thread to listen for keyboard shortcuts."""
+        self._kb_thread_running = False
+        tty_stream, fd, is_custom_file = self._get_tty_stream()
+
+        if tty_stream is None:
+            self.get_logger().info(
+                'Terminal stdin is not a TTY. Interactive keyboard controls (Space, Up/Down arrows) are disabled.\n'
+                'You can still control playback via ROS 2 topic:\n'
+                '  ros2 topic pub /video_camera_sim/control std_msgs/msg/String "{data: \'space\'}"'
+            )
+            return
+
+        self._kb_thread_running = True
+        self._kb_thread = threading.Thread(
+            target=self._keyboard_listener_loop,
+            args=(tty_stream, fd, is_custom_file),
+            daemon=True
+        )
+        self._kb_thread.start()
+        self.get_logger().info(
+            'Interactive Keyboard Controls Active:\n'
+            '  [SPACE]      : Pause / Resume video playback\n'
+            '  [UP ARROW]   : Increase playback speed\n'
+            '  [DOWN ARROW] : Decrease playback speed'
+        )
+
+    def _keyboard_listener_loop(self, tty_stream, fd, is_custom_file):
+        """Loop running in background thread to read raw TTY characters."""
+        try:
+            old_settings = termios.tcgetattr(fd)
+        except Exception as e:
+            self.get_logger().warning(f'Could not get terminal attributes: {e}')
+            if is_custom_file:
+                try:
+                    tty_stream.close()
+                except Exception:
+                    pass
+            return
+
+        try:
+            tty.setcbreak(fd)
+            while rclpy.ok() and self._kb_thread_running:
+                rlist, _, _ = select.select([tty_stream], [], [], 0.1)
+                if rlist:
+                    ch = tty_stream.read(1)
+                    if ch in [' ', 'p', 'P']:
+                        self.toggle_pause()
+                    elif ch in ['w', 'W', '+', 'k']:
+                        self.increase_speed()
+                    elif ch in ['s', 'S', '-', 'j']:
+                        self.decrease_speed()
+                    elif ch == '\x1b':  # ESC sequence for arrow keys
+                        rlist_esc, _, _ = select.select([tty_stream], [], [], 0.05)
+                        if rlist_esc:
+                            ch2 = tty_stream.read(1)
+                            if ch2 in ['[', 'O']:
+                                rlist_code, _, _ = select.select([tty_stream], [], [], 0.05)
+                                if rlist_code:
+                                    ch3 = tty_stream.read(1)
+                                    if ch3 == 'A':    # Up Arrow
+                                        self.increase_speed()
+                                    elif ch3 == 'B':  # Down Arrow
+                                        self.decrease_speed()
+        except Exception as e:
+            self.get_logger().debug(f'Keyboard listener loop stopped: {e}')
+        finally:
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except Exception:
+                pass
+            if is_custom_file:
+                try:
+                    tty_stream.close()
+                except Exception:
+                    pass
+
+    # ──────────────────────────────────────────────────────────────────────
     # Timer callback — read and publish one frame
     # ──────────────────────────────────────────────────────────────────────
     def _timer_callback(self):
+        if self.is_paused:
+            return
+
         if time.monotonic() < self._playback_start_time:
             return
 
@@ -301,6 +476,7 @@ class VideoNode(Node):
     # Cleanup
     # ──────────────────────────────────────────────────────────────────────
     def destroy_node(self):
+        self._kb_thread_running = False
         if self.cap is not None and self.cap.isOpened():
             self.cap.release()
             self.get_logger().info('Video capture released.')

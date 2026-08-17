@@ -36,8 +36,8 @@ for CNAME in "${CONTAINERS[@]}"; do
   # kill existing session so we start clean
   tmux has-session -t "$CNAME" 2>/dev/null && tmux kill-session -t "$CNAME"
 
-  if [[ "$CNAME" == "quadruped_test_controller" ]]; then
-    # keyboard controller needs a real tty — use `docker attach` with stdin
+  if [[ "$CNAME" == "quadruped_test_controller" || "$CNAME" == "video_camera_sim" ]]; then
+    # interactive controllers need a real tty — use `docker attach` with stdin
     tmux new-session -d -s "$CNAME" \
       "docker attach \"$CNAME\" 2>&1 || { echo '[container not running]'; read; }"
   else
