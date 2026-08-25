@@ -27,8 +27,8 @@ def generate_launch_description():
     # any YAML-driven frame configuration.
     elevation_mapping_config = os.path.join(pkg_share, 'config', 'elevation_mapping.yaml')
     elevation_mapping_node = Node(
-        package='elevation_mapping_cupy',
-        executable='elevation_mapping_node.py',
+        package='simple_elevation_mapping_cupy',
+        executable='simple_elevation_mapping_node',
         name='elevation_mapping_node',
         output='screen',
         parameters=[

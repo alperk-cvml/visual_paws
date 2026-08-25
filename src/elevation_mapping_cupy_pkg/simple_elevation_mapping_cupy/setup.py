@@ -22,6 +22,7 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
+            'simple_elevation_mapping_node = simple_elevation_mapping_cupy.simple_elevation_mapping_node:main',
         ],
     },
 )
