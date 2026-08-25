@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  video_camera_sim:
+    image: video-camera-sim:jazzy
+    container_name: video_camera_sim
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Video camera parameters
+      - VIDEO_PATH=${VIDEO_PATH:-/work/ws/videos/INPUT_1.MOV}
+      - VIDEO_FPS=${VIDEO_FPS:-1.0}
+      - VIDEO_LOOP=${VIDEO_LOOP:-true}
+      - WIDTH=${WIDTH:-640}
+      - HEIGHT=${HEIGHT:-360}
+      - VIDEO_START_DELAY=${VIDEO_START_DELAY:-0.0}
+      - IMAGE_TOPIC=${IMAGE_TOPIC:-/camera/image_raw}
+      - CAMERA_INFO_TOPIC=${CAMERA_INFO_TOPIC:-/camera/camera_info}
+      - FRAME_ID=${FRAME_ID:-camera_link_optical}
+      - USE_SIM_TIME=${USE_SIM_TIME:-false}
+      - FX=${FX:-506.0}
+      - FY=${FY:-506.0}
+      - CX=${CX:-320.0}
+      - CY=${CY:-180.0}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+      # Video files — mount your videos directory here
+      - ../../videos:/videos:ro
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery
+    network_mode: host
+    ipc: host
+    stdin_open: true
+    tty: true
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        colcon build --symlink-install --packages-select video_camera_sim;
+        source /work/ws/install/setup.bash;
+        ros2 launch video_camera_sim video_camera.launch.py video_path:=$${VIDEO_PATH} fps:=$${VIDEO_FPS} loop:=$${VIDEO_LOOP} start_delay:=$${VIDEO_START_DELAY} image_topic:=$${IMAGE_TOPIC} camera_info_topic:=$${CAMERA_INFO_TOPIC} frame_id:=$${FRAME_ID} use_sim_time:=$${USE_SIM_TIME} fx:=$${FX} fy:=$${FY} cx:=$${CX} cy:=$${CY} width:=$${WIDTH} height:=$${HEIGHT}
+      "

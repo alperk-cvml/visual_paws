@@ -29,6 +29,9 @@ services:
       # ROS
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      # "slam": EKFs own map->odom and odom->base_link.
+      # "ground_truth": Gazebo owns odom->base_link and publishes static map->odom.
+      - LOCALIZATION_MODE=${LOCALIZATION_MODE:-slam}
 
       # Useful for some Gazebo/OGRE setups
       - LIBGL_ALWAYS_INDIRECT=0
@@ -65,8 +68,7 @@ services:
       bash -lc "
         set -e;
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
-        colcon build --symlink-install;
+        colcon build --symlink-install --packages-ignore localization monocular_depth;
         source /work/ws/install/setup.bash;
-        ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS}
+        ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS} localization_mode:=$${LOCALIZATION_MODE}
       "
-

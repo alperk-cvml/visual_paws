@@ -16,7 +16,7 @@ services:
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
 
       # Input — point cloud produced by dept_image_proc
-      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/depth_image/points}
+      - POINTCLOUD_TOPIC=${POINTCLOUD_TOPIC:-/depth_camera/points}
 
       # Coordinate frames
       - MAP_FRAME_ID=${MAP_FRAME_ID:-odom}

@@ -1,0 +1,46 @@
+time="2026-06-24T16:13:44+03:00" level=warning msg="/home/alper/git/visual_paws/src/monocular_depth/docker-compose.yaml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+Attaching to monocular_depth
+ Container monocular_depth Starting 
+monocular_depth  | 
+monocular_depth  | ==========
+monocular_depth  | == CUDA ==
+monocular_depth  | ==========
+ Container monocular_depth Started 
+monocular_depth  | 
+monocular_depth  | CUDA Version 12.6.3
+monocular_depth  | 
+monocular_depth  | Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+monocular_depth  | 
+monocular_depth  | This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+monocular_depth  | By pulling and using the container, you accept the terms and conditions of this license:
+monocular_depth  | https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+monocular_depth  | 
+monocular_depth  | A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+monocular_depth  | 
+monocular_depth  | Starting >>> monocular_depth
+monocular_depth  | Finished <<< monocular_depth [1.20s]
+monocular_depth  | 
+monocular_depth  | Summary: 1 package finished [1.35s]
+monocular_depth  | [INFO] [launch]: All log files can be found below /home/ubuntu/.ros/log/2026-06-24-13-13-47-028682-alper-OMEN-Laptop-15-ek0xxx-102
+monocular_depth  | [INFO] [launch]: Default logging verbosity is set to INFO
+monocular_depth  | [INFO] [depth_node-1]: process started with pid [105]
+monocular_depth  | [depth_node-1] [INFO] [1782306829.027097337] [depth_node]: Using device: cuda
+monocular_depth  | [depth_node-1] xFormers not available
+monocular_depth  | [depth_node-1] xFormers not available
+monocular_depth  | [depth_node-1] Traceback (most recent call last):
+monocular_depth  | [depth_node-1]   File "/work/ws/install/monocular_depth/lib/monocular_depth/depth_node", line 33, in <module>
+monocular_depth  | [depth_node-1]     sys.exit(load_entry_point('monocular-depth', 'console_scripts', 'depth_node')())
+monocular_depth  | [depth_node-1]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+monocular_depth  | [depth_node-1]   File "/work/ws/build/monocular_depth/monocular_depth/depth_node.py", line 195, in main
+monocular_depth  | [depth_node-1]     node = DepthNode()
+monocular_depth  | [depth_node-1]            ^^^^^^^^^^^
+monocular_depth  | [depth_node-1]   File "/work/ws/build/monocular_depth/monocular_depth/depth_node.py", line 61, in __init__
+monocular_depth  | [depth_node-1]     self.model = self._load_model(model_path)
+monocular_depth  | [depth_node-1]                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+monocular_depth  | [depth_node-1]   File "/work/ws/build/monocular_depth/monocular_depth/depth_node.py", line 127, in _load_model
+monocular_depth  | [depth_node-1]     model = DepthAnythingV2(**config, max_depth=self.max_depth)
+monocular_depth  | [depth_node-1]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+monocular_depth  | [depth_node-1] TypeError: DepthAnythingV2.__init__() got an unexpected keyword argument 'max_depth'
+monocular_depth  | [ERROR] [depth_node-1]: process has died [pid 105, exit code 1, cmd '/work/ws/install/monocular_depth/lib/monocular_depth/depth_node --ros-args -r __node:=depth_node --params-file /tmp/launch_params_xhw1olek'].
+monocular_depth  | bash: line 7: input_image_topic:=/camera/image_raw: No such file or directory
+[Kmonocular_depth exited with code 127

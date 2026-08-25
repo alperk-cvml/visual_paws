@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  monocular_depth:
+    image: monocular-depth:jazzy
+    container_name: monocular_depth
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+        MODEL_TYPE: vits
+
+    runtime: nvidia
+    environment:
+      # NVIDIA
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
+      # GUI / X11 Forwarding
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+      - XAUTHORITY=/tmp/.docker.xauth
+      - XDG_RUNTIME_DIR=/tmp/runtime-ubuntu
+      - MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+      - WAYLAND_DISPLAY=""
+
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Depth node parameters
+      - INPUT_IMAGE_TOPIC=${INPUT_IMAGE_TOPIC:-/camera/image_raw}
+      - OUTPUT_DEPTH_TOPIC=${OUTPUT_DEPTH_TOPIC:-/depth/image_raw}
+      - OUTPUT_CAMERA_INFO_TOPIC=${OUTPUT_CAMERA_INFO_TOPIC:-/depth/camera_info}
+      - MODEL_TYPE=${MODEL_TYPE:-vits}
+      - MAX_DEPTH=${MAX_DEPTH:-80.0}
+      - TARGET_FPS=${TARGET_FPS:-10.0}
+      - DEVICE=${DEVICE:-cuda}
+      - USE_SIM_TIME=${USE_SIM_TIME:-false}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+      # X11 socket for GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Xauthority
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:rw
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        mkdir -p /tmp/runtime-ubuntu && chmod 0700 /tmp/runtime-ubuntu || true;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        colcon build --symlink-install --packages-select monocular_depth;
+        source /work/ws/install/setup.bash;
+        ros2 launch monocular_depth depth.launch.py input_image_topic:=$${INPUT_IMAGE_TOPIC} output_depth_topic:=$${OUTPUT_DEPTH_TOPIC} output_camera_info_topic:=$${OUTPUT_CAMERA_INFO_TOPIC} model_type:=$${MODEL_TYPE} max_depth:=$${MAX_DEPTH} target_fps:=$${TARGET_FPS} device:=$${DEVICE} use_sim_time:=$${USE_SIM_TIME}
+      "

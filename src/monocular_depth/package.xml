@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>monocular_depth</name>
+  <version>0.0.1</version>
+  <description>Monocular metric depth estimation using Depth Anything V2 — subscribes to RGB image and publishes metric depth (32FC1, metres)</description>
+
+  <maintainer email="you@yourdomain.com">you</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

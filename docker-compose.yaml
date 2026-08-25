@@ -9,9 +9,13 @@
 
 include:
   - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
   - path: src/dept_image_proc/docker-compose.yaml
   - path: src/elevation_mapping_cupy_pkg/docker-compose.yaml
   - path: src/quadruped_gait_controller/docker-compose.yaml
   - path: src/quadruped_test_controller/docker-compose.yaml
   - path: src/nav2_mppi_navigation/docker-compose.yaml
+  - path: src/monocular_depth/docker-compose.yaml
+  - path: src/localization/docker-compose.yaml
+  - path: src/video_camera_sim/docker-compose.yaml
     #  - path: src/elevation_mapping/docker-compose.yaml
