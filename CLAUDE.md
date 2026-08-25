@@ -382,6 +382,19 @@ Gait Controller (Phase 1–2) / RL Policy (Phase 3)
 - `src/nav2_mppi_navigation/nav2_mppi_navigation/config/nav2_mppi_params.yaml` — Nav2 + MPPI config. MPPI: 2000 rollouts, 56-step horizon, `Omni` motion model (quadruped is holonomic). Costmap reads `/traversability_costmap`, 4m×4m rolling window, 5cm resolution.
 - `src/nav2_mppi_navigation/nav2_mppi_navigation/launch/nav2_mppi.launch.py` — Phase 1: static `map→odom` TF. Phase 2+: consumes `/odom` + `/tf` from localization container.
 
+## Vendored Code — Do Not Modify
+
+These directories contain third-party code vendored into the repo. Changes
+here are lost on update and make upstream fixes unmergeable.
+
+- `src/elevation_mapping_cupy_pkg/elevation_mapping_cupy/` — upstream ANYbotics repo
+- `src/localization/ORB_SLAM3/` — upstream ORB-SLAM3
+
+To change behaviour, use configuration/parameters, a wrapper node, or a
+documented patch file in `patches/`. Never edit vendored sources in place.
+If a change genuinely requires modifying upstream, say so explicitly and
+propose it as a patch, do not do it silently.
+
 ---
 
 ## Localization Strategy
