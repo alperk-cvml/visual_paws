@@ -16,6 +16,7 @@ include:
   - path: src/quadruped_test_controller/docker-compose.yaml
   - path: src/nav2_mppi_navigation/docker-compose.yaml
   - path: src/monocular_depth/docker-compose.yaml
+  - path: src/depth_comparison/docker-compose.yaml
   - path: src/localization/docker-compose.yaml
   - path: src/video_camera_sim/docker-compose.yaml
     #  - path: src/elevation_mapping/docker-compose.yaml

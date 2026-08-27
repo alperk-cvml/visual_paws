@@ -1,0 +1,60 @@
+services:
+  depth_comparison:
+    image: depth-comparison:jazzy
+    container_name: depth_comparison
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+        DAV2_ENCODER: vits
+        METRIC3D_MODEL: metric3d_vit_small
+
+    runtime: nvidia
+    environment:
+      # NVIDIA
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+      # Comparison inputs. Gazebo defaults; offline-video.env overrides these
+      # to /camera/image_raw + /camera/camera_info and drops the `gt` backend.
+      - COMPARE_INPUT_IMAGE_TOPIC=${COMPARE_INPUT_IMAGE_TOPIC:-/front_camera/image_raw}
+      - COMPARE_INPUT_CAMERA_INFO_TOPIC=${COMPARE_INPUT_CAMERA_INFO_TOPIC:-/front_camera/camera_info}
+      - COMPARE_BACKENDS=${COMPARE_BACKENDS:-gt,dav2_vkitti,dav2_hypersim,metric3d_s}
+      - COMPARE_NAMESPACE=${COMPARE_NAMESPACE:-/depth_compare}
+      - COMPARE_TARGET_FPS=${COMPARE_TARGET_FPS:-5.0}
+      - COMPARE_PUBLISH_POINTCLOUDS=${COMPARE_PUBLISH_POINTCLOUDS:-true}
+      - DEVICE=${DEVICE:-cuda}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/$${ROS_DISTRO}/setup.bash;
+        colcon build --symlink-install --packages-select depth_comparison;
+        source /work/ws/install/setup.bash;
+        ros2 launch depth_comparison depth_comparison.launch.py
+          input_image_topic:=$${COMPARE_INPUT_IMAGE_TOPIC}
+          input_camera_info_topic:=$${COMPARE_INPUT_CAMERA_INFO_TOPIC}
+          backends:=$${COMPARE_BACKENDS}
+          output_namespace:=$${COMPARE_NAMESPACE}
+          target_fps:=$${COMPARE_TARGET_FPS}
+          publish_pointclouds:=$${COMPARE_PUBLISH_POINTCLOUDS}
+          device:=$${DEVICE}
+          use_sim_time:=$${USE_SIM_TIME}
+      "
