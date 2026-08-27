@@ -62,14 +62,18 @@ Failure to align with the constraints listed in `CLAUDE.md` and this `AGENTS.md`
 
 ## Current Target
 
-Creating an elevation map from offline recorded video using pose from ORB-SLAM3 and point clouds from Depth Anything V2.
 
-- [x] Step 0: Publish video from a file (`video_camera_sim`)
-- [x] Step 1: Get monocular depth working (`monocular_depth` / Depth Anything V2)
-- [x] Step 2: Get point clouds published from monocular depth (`depth_image_proc`)
-- [x] Step 3: Get SLAM working (`localization` / ORB-SLAM3)
-- [x] Step 4: Integrate SLAM TF with point clouds from monocular depth
-- [ ] Step 5: Elevation map accumulating correctly from replayed video
+Now the pipeline is working. But Depth Anything V2 has a huge scale problem. I want to implement other models and compare them side to side. I'll first try comparing with visual inspection, if this is not enough I'll develop a quantitative comparison module.
+
+- [x] Step 0: DepthAnything V2.
+- [x] Step 00: ROS Depth Sensor module
+- [ ] Step 1: DAV2 VKITTI
+- [ ] Step 2: DAV2 Hypersim
+- [ ] Step 3: Metric3D-v2-S
+
+I'll thest these in two phases:
+- [] Phase 1: ROS2 Gazebo <-- We are here 
+- [] Phase 2: On pre-recorded (iphone) videos 
 
 ### Offline Video Launch
 
@@ -82,3 +86,22 @@ docker compose --env-file offline-video.env up -d --build
 This sets `LOCALIZATION_MODE=offline_video` (ORB-SLAM3 directly publishes `map→base_link`), `USE_SIM_TIME=false`, and wires all topic remappings. Without the env file, containers fall back to Gazebo simulation defaults.
 
 **Important**: Agents must ensure `offline-video.env` variables are respected when modifying docker-compose files or launch parameters. The env file is the single source of truth for the offline pipeline configuration.
+
+### Depth Comparison Launch (Phase 1)
+
+The Phase 1 comparison runs against Gazebo, whose depth sensor supplies the ground-truth reference channel that recorded footage cannot:
+
+```bash
+docker compose --env-file depth-comparison.env \
+  -f docker-compose-depth-comparison.yaml up -d --build
+```
+
+This sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (static `map→odom` plus `odom→base_link`; no EKF or ORB-SLAM3, since the comparison needs a TF tree rather than drift correction), and `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. `depth-comparison.env` is the single source of truth for this profile.
+
+The module lives in `src/depth_comparison/`. Constraints agents must preserve:
+
+- **One node runs every backend on the same frame.** Do not split the models into separate nodes — independent rate limiters drift onto different source frames, and comparing depth maps of different moments measures nothing.
+- **Depth images carry the source image header verbatim.** Never restamp or reframe them; the per-model point clouds must stay in the camera optical frame with the source timestamp.
+- **`max_depth` is a trained-in output scale for Depth Anything V2**, not a clamp — its metric head ends in `sigmoid(x) * max_depth`. Raising Hypersim's 20 m for an outdoor scene multiplies every prediction by 4 and manufactures a scale error.
+- **`src/depth_comparison/compat/mmcv/` is a deliberate compatibility shim**, not dead code. Metric3D imports mmcv 1.x, which will not install on Python 3.12; mmcv 2.x removed the `mmcv.utils` namespace. The shim re-exports the four symbols Metric3D needs from mmengine and raises on anything else. Extend it rather than patching the Metric3D checkout in the torch hub cache.
+- **Add new models by implementing `DepthBackend`** and registering the class in `backends/__init__.py`, then adding a channel to `config/backends.yaml`. The node declares the backend's parameters from `param_defaults()` and the launch file spawns the matching point cloud automatically.

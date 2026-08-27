@@ -43,6 +43,27 @@ The `offline-video.env` profile configures:
 
 > **Note**: Place your video file at `videos/INPUT.MOV` (relative to repo root), or override `VIDEO_PATH` in `offline-video.env`.
 
+**Depth model comparison** (Gazebo ground truth vs. three monocular models):
+```bash
+docker compose --env-file depth-comparison.env \
+  -f docker-compose-depth-comparison.yaml up --build
+```
+
+Runs the Gazebo depth sensor and three monocular metric depth models on
+identical RGB frames, publishing one depth image and one point cloud per model
+under `/depth_compare/<key>/`:
+
+| Channel | Source | Metric scale from |
+|---|---|---|
+| `gt` | Gazebo depth sensor | ground truth (reference) |
+| `dav2_vkitti` | Depth Anything V2 | VKITTI training domain (driving, 80 m) |
+| `dav2_hypersim` | Depth Anything V2 | Hypersim training domain (indoor, 20 m) |
+| `metric3d_s` | Metric3D V2 ViT-S | the live camera intrinsics |
+
+Drive the robot to vary the viewpoint with `tmux attach -t quadruped_test_controller`.
+See [`src/depth_comparison/README.md`](src/depth_comparison/README.md) for the
+backend interface, measured throughput, and how to add a model.
+
 ### 3. Monitor & Interact (tmux)
 
 Once the containers are running, use the provided `tmux-attach.sh` script to open a distinct tmux session for each module.
@@ -70,6 +91,7 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture pipeline, TF tree, topic fl
 | `quadruped_gazebo` | Physics sim, robot spawn, sensor publishing |
 | `video_camera_sim` | Plays recorded video as camera topics (offline pipeline) |
 | `monocular_depth` | Depth Anything V2 → metric depth from RGB |
+| `depth_comparison` | N depth models on identical frames → one depth + cloud each |
 | `depth_image_proc` | Depth image → PointCloud2 conversion |
 | `localization` | ORB-SLAM3 + EKF sensor fusion |
 | `elevation_mapping_cupy` | GPU elevation mapping from point clouds |
@@ -80,9 +102,22 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture pipeline, TF tree, topic fl
 
 ## Development
 
-The root `docker-compose.yaml` uses the `include` directive to pull in configurations from individual module directories under `src/`. This allows you to work on modules in isolation while maintaining a single orchestration point.
+Compose files use the `include` directive to pull in configurations from
+individual module directories under `src/`. This allows you to work on modules
+in isolation while maintaining a single orchestration point.
 
-Environment variables are used to switch between sim and offline profiles. All topic names and frame IDs are remappable — see each module's `docker-compose.yaml` for available overrides.
+Each entry point pairs a compose file with an env file that is the single
+source of truth for that profile's topic names, frame IDs, and mode switches:
+
+| Compose file | Env file | Purpose |
+|---|---|---|
+| `docker-compose.yaml` | — (or `offline-video.env`) | Full stack; Gazebo defaults |
+| `docker-compose-camera-pipeline.yaml` | `offline-video.env` | Recorded video → depth → SLAM → elevation map, no Gazebo |
+| `docker-compose-depth-comparison.yaml` | `depth-comparison.env` | Gazebo depth sensor vs. monocular depth models |
+
+Environment variables switch between profiles. All topic names and frame IDs
+are remappable — see each module's `docker-compose.yaml` for available
+overrides.
 
 ### Adding New Modules
 

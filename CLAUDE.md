@@ -63,6 +63,14 @@ The `offline-video.env` profile sets `LOCALIZATION_MODE=offline_video` (ORB-SLAM
 
 > **Note**: Place your video file at `videos/INPUT.MOV` (relative to repo root), or override `VIDEO_PATH` in `offline-video.env`.
 
+**Depth model comparison** (Phase 1 — Gazebo ground truth vs. monocular models):
+```bash
+docker compose --env-file depth-comparison.env \
+  -f docker-compose-depth-comparison.yaml up -d --build
+```
+
+The `depth-comparison.env` profile sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (no EKF or ORB-SLAM3 — the comparison needs a TF tree, not drift correction), and `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. See `depth-comparison.env` for all variables.
+
 ### Inside Containers (ROS 2 Workspace)
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -278,11 +286,14 @@ The MPPI controller, traversability estimator, elevation mapper, and localizatio
 
 The root `docker-compose.yaml` uses Compose `include:` to pull in each module's own `docker-compose.yaml`. All containers run on the host network with `ipc: host` for zero-config ROS 2 DDS discovery.
 
+Two narrower entry points select a subset of the same module composes: `docker-compose-camera-pipeline.yaml` (offline video, no Gazebo) and `docker-compose-depth-comparison.yaml` (Phase 1 depth model comparison). Each pairs with its own env file — see [Environment Variables](#environment-variables-set-in-docker-compose).
+
 | Container | Image Base | Phase | Role |
 |---|---|---|---|
 | `quadruped_gazebo` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Physics sim, robot spawn, sensor publishing |
 | `rviz` | `osrf/ros:jazzy-desktop-full` | 1+ | Standalone visualization for simulation and offline pipelines |
 | `monocular_depth` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 2+ | Depth Anything V2 + Metric3D V2 → depth + normals |
+| `depth_comparison` | `nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04` | 2+ | N depth models on identical frames → depth + cloud per model |
 | `depth_image_proc` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Depth → point cloud conversion |
 | `elevation_mapping_cupy` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 1+ | GPU elevation mapping |
 | `traversability_estimation` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 2+ | Slope/roughness/step costmap from elevation map |
@@ -376,6 +387,7 @@ Gait Controller (Phase 1–2) / RL Policy (Phase 3)
 - `src/quadruped_gazebo/launch/gazebo.launch.py` — Spawns robot, loads controllers, starts ROS-Gazebo bridges.
 - `src/video_camera_sim/` — Plays pre-recorded video files as `/camera/image_raw` + `/camera/camera_info` for offline testing of perception and localization pipelines. Configurable FPS, loop, and camera intrinsics.
 - `src/monocular_depth/` — (Phase 2) Depth Anything V2 + Metric3D V2 inference node. TensorRT FP16 export for Jetson. Publishes metric depth and surface normals.
+- `src/depth_comparison/` — Runs N depth backends on the *same* RGB frame and publishes one metric depth image + point cloud per model under `/depth_compare/<key>/`. Backends: Gazebo depth sensor (relay reference), Depth Anything V2 (VKITTI + Hypersim checkpoints), Metric3D V2. Add a model by implementing `DepthBackend` and registering it in `backends/__init__.py`. Contains `compat/mmcv/`, a deliberate mmengine-backed shim for Metric3D's mmcv 1.x imports.
 - `src/elevation_mapping_cupy_pkg/` — GPU elevation map (3m×3m, 5cm resolution, 2 Hz). Ingests point cloud + surface normals for covariance-weighted fusion. Vendored `elevation_mapping_cupy` repo.
 - `src/traversability_estimation/` — (Phase 2) Computes traversability costmap from elevation map: slope angle, roughness (height variance), step height against leg reach limits. Publishes `nav_msgs/OccupancyGrid`.
 - `src/localization/` — (Phase 2) ORB-SLAM3 in RGBD mode (monocular depth as D channel) + `robot_localization` EKF fusing LKO + SLAM + IMU. LKO is the primary short-horizon source; SLAM provides loop-closure drift correction.
@@ -470,6 +482,27 @@ To add a new platform, implement the vehicle interface contract (see above) and 
 | `MAP_FRAME_ID` | `map` | Elevation map fixed frame |
 | `FRAME_ID` | `camera_link_optical` | Camera frame for video publisher |
 
+### Depth Comparison Profile (`depth-comparison.env`)
+
+Used with `docker-compose-depth-comparison.yaml` (Phase 1, Gazebo).
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `USE_SIM_TIME` | `true` | Gazebo publishes `/clock` |
+| `LOCALIZATION_MODE` | `ground_truth` | Static `map→odom` + `odom→base_link`; no EKF or ORB-SLAM3 |
+| `COMPARE_INPUT_IMAGE_TOPIC` | `/front_camera/image_raw` | RGB source every model shares |
+| `COMPARE_INPUT_CAMERA_INFO_TOPIC` | `/front_camera/camera_info` | Intrinsics (Metric3D needs these for metric scale) |
+| `COMPARE_BACKENDS` | `gt,dav2_vkitti,dav2_hypersim,metric3d_s` | Channels to run; drop entries to keep the loop responsive |
+| `COMPARE_NAMESPACE` | `/depth_compare` | Parent of `<key>/image_raw`, `<key>/camera_info`, `<key>/points` |
+| `COMPARE_TARGET_FPS` | `1.0` | Upper bound only — all models run per frame |
+| `COMPARE_PUBLISH_POINTCLOUDS` | `true` | Spawn a `point_cloud_xyz_node` per channel |
+
+Rules:
+- **All models run on the same frame.** Rate-limiting separate nodes would let them drift onto different source frames, and comparing depth maps of different moments measures nothing.
+- **`max_depth` is not a free parameter** for Depth Anything V2. Its metric head ends in `sigmoid(x) * max_depth`, so the value is a trained-in output scale — raising Hypersim's 20 m to cover an outdoor scene multiplies every prediction by 4.
+- **A backend that fails to load is dropped, not fatal.** The node aborts only if every channel fails. Check startup logs for `unavailable, dropping it` before trusting a comparison.
+- Metric3D reaches ~1167 ms/frame on an RTX 2060 against ~300 ms for the DA-V2 models; all three together run at roughly 0.55 Hz.
+
 ---
 
 ## Known Limitations & Open Decisions
@@ -486,12 +519,14 @@ To add a new platform, implement the vehicle interface contract (see above) and 
 
 ## Current Target
 
-Creating an elevation map from offline recorded video using pose from ORB-SLAM3 and point clouds from Depth Anything V2.
+Now the pipeline is working. But Depth Anything V2 has a huge scale problem. I want to implement other models and compare them side to side. I'll first try comparing with visual inspection, if this is not enough I'll develop a quantitative comparison module.
 
-- [x] Step 0: Publish video from a file (`video_camera_sim`)
-- [x] Step 1: Get monocular depth working (`monocular_depth` / Depth Anything V2)
-- [x] Step 2: Get point clouds published from monocular depth (`depth_image_proc`)
-- [x] Step 3: Get SLAM working (`localization` / ORB-SLAM3)
-- [x] Step 4: Integrate SLAM TF with point clouds from monocular depth
-- [ ] Step 5: Elevation map accumulating correctly from replayed video
+- [x] Step 0: DepthAnything V2.
+- [x] Step 00: ROS Depth Sensor module
+- [ ] Step 1: DAV2 VKITTI
+- [ ] Step 2: DAV2 Hypersim
+- [ ] Step 3: Metric3D-v2-S
 
+I'll thest these in two phases:
+- [] Phase 1: ROS2 Gazebo <-- We are here 
+- [] Phase 2: On pre-recorded (iphone) videos 
