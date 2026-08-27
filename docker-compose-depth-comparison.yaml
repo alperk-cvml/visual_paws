@@ -1,0 +1,26 @@
+# Phase 1 depth model comparison — Gazebo ground truth vs. three monocular models.
+#
+# Usage (from repo root):
+#   xhost +local:docker                      # once per login, for the GUIs
+#   docker compose --env-file depth-comparison.env \
+#     -f docker-compose-depth-comparison.yaml up --build
+#
+# Drive the robot to vary the viewpoint:
+#   tmux attach -t quadruped_test_controller   # W/A/S/D, Q/E rotate, ESC quit
+#
+# This profile is intentionally independent of the offline video pipeline: the
+# camera is Gazebo's, ORB-SLAM3 is not involved, and the ground-truth depth
+# sensor provides the reference channel that recorded footage cannot.
+#
+# Core services are quadruped_gazebo, depth_comparison and rviz. The two
+# controllers only exist so you can move the robot around; start a subset with
+#   docker compose --env-file depth-comparison.env \
+#     -f docker-compose-depth-comparison.yaml up quadruped_gazebo depth_comparison rviz
+
+include:
+  - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/depth_comparison/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
+  # Teleop chain: keyboard -> /cmd_vel -> joint commands. Optional.
+  - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_test_controller/docker-compose.yaml
