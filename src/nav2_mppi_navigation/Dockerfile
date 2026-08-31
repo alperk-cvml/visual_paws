@@ -40,6 +40,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       ros-${ROS_DISTRO}-ament-cmake-python \
       python3-colcon-common-extensions \
       python3-rosdep \
+      python3-numpy \
+      python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user matching host UID/GID
