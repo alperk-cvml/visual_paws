@@ -69,7 +69,7 @@ docker compose --env-file depth-comparison.env \
   -f docker-compose-depth-comparison.yaml up -d --build
 ```
 
-The `depth-comparison.env` profile sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (no EKF or ORB-SLAM3 — the comparison needs a TF tree, not drift correction), and `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. See `depth-comparison.env` for all variables.
+The `depth-comparison.env` profile sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (no EKF or ORB-SLAM3 — the comparison needs a TF tree, not drift correction), selects the deterministic `v0_geometry` simulation benchmark, and sets `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. `SIM_BENCHMARK_SEED=config` uses `random_seed: 42` from the scenario YAML. See `depth-comparison.env` for all variables.
 
 ### Inside Containers (ROS 2 Workspace)
 ```bash
@@ -496,6 +496,9 @@ Used with `docker-compose-depth-comparison.yaml` (Phase 1, Gazebo).
 | `COMPARE_NAMESPACE` | `/depth_compare` | Parent of `<key>/image_raw`, `<key>/camera_info`, `<key>/points` |
 | `COMPARE_TARGET_FPS` | `1.0` | Upper bound only — all models run per frame |
 | `COMPARE_PUBLISH_POINTCLOUDS` | `true` | Spawn a `point_cloud_xyz_node` per channel |
+| `SIM_BENCHMARK_SCENARIO` | `v0_geometry` | Procedural Gazebo scenario |
+| `SIM_BENCHMARK_SEED` | `config` | Uses the scenario YAML seed (`42`); an integer overrides it |
+| `SIM_BENCHMARK_OUTPUT_DIR` | `/work/ws/build/simulation_benchmark` | Generated benchmark artifact root |
 
 Rules:
 - **All models run on the same frame.** Rate-limiting separate nodes would let them drift onto different source frames, and comparing depth maps of different moments measures nothing.
@@ -528,5 +531,5 @@ Now the pipeline is working. But Depth Anything V2 has a huge scale problem. I w
 - [ ] Step 3: Metric3D-v2-S
 
 I'll thest these in two phases:
-- [] Phase 1: ROS2 Gazebo <-- We are here 
-- [] Phase 2: On pre-recorded (iphone) videos 
+- [] Phase 1: ROS2 Gazebo <-- We are here
+- [] Phase 2: On pre-recorded (iphone) videos

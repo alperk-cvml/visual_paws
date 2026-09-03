@@ -1,4 +1,5 @@
-# Phase 1 depth model comparison — Gazebo ground truth vs. three monocular models.
+# Phase 1 depth model comparison — deterministic V0 Gazebo benchmark ground
+# truth vs. three monocular models.
 #
 # Usage (from repo root):
 #   xhost +local:docker                      # once per login, for the GUIs
@@ -10,7 +11,9 @@
 #
 # This profile is intentionally independent of the offline video pipeline: the
 # camera is Gazebo's, ORB-SLAM3 is not involved, and the ground-truth depth
-# sensor provides the reference channel that recorded footage cannot.
+# sensor provides the reference channel that recorded footage cannot. Gazebo
+# generates the scenario selected in depth-comparison.env before it starts.
+# SIM_BENCHMARK_SEED=config uses the scenario YAML seed (42).
 #
 # Core services are quadruped_gazebo, depth_comparison and rviz. The two
 # controllers only exist so you can move the robot around; start a subset with

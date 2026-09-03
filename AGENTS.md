@@ -96,7 +96,7 @@ docker compose --env-file depth-comparison.env \
   -f docker-compose-depth-comparison.yaml up -d --build
 ```
 
-This sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (static `map→odom` plus `odom→base_link`; no EKF or ORB-SLAM3, since the comparison needs a TF tree rather than drift correction), and `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. `depth-comparison.env` is the single source of truth for this profile.
+This sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (static `map→odom` plus `odom→base_link`; no EKF or ORB-SLAM3, since the comparison needs a TF tree rather than drift correction), selects the deterministic `v0_geometry` simulation benchmark, and sets `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. `SIM_BENCHMARK_SEED=config` uses `random_seed: 42` from the scenario YAML; set an explicit integer for another repeatable terrain. `depth-comparison.env` is the single source of truth for this profile's runtime selection and overrides.
 
 The module lives in `src/depth_comparison/`. Constraints agents must preserve:
 

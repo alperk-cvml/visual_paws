@@ -53,6 +53,15 @@ Runs the Gazebo depth sensor and three monocular metric depth models on
 identical RGB frames, publishing one depth image and one point cloud per model
 under `/depth_compare/<key>/`:
 
+Gazebo uses the deterministic V0 geometry benchmark. Its default seed is `42`
+from `v0_geometry.yaml`; keep `SIM_BENCHMARK_SEED=config` to reproduce the same
+world, or override it with an integer on demand:
+
+```bash
+SIM_BENCHMARK_SEED=43 docker compose --env-file depth-comparison.env \
+  -f docker-compose-depth-comparison.yaml up -d
+```
+
 | Channel | Source | Metric scale from |
 |---|---|---|
 | `gt` | Gazebo depth sensor | ground truth (reference) |

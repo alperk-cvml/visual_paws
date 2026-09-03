@@ -32,15 +32,15 @@ services:
       # "slam": EKFs own map->odom and odom->base_link.
       # "ground_truth": Gazebo owns odom->base_link and publishes static map->odom.
       - LOCALIZATION_MODE=${LOCALIZATION_MODE:-slam}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
 
       # Useful for some Gazebo/OGRE setups
       - LIBGL_ALWAYS_INDIRECT=0
 
       # Choose what to run
       - LAUNCH_PKG=quadruped_gazebo
-      - LAUNCH_FILE=gazebo.launch.py
-      - LAUNCH_ARGS=world:=/work/ws/install/quadruped_gazebo/share/quadruped_gazebo/worlds/empty.sdf
-      - LAUNCH_ARGS=${LAUNCH_ARGS:-"gui:=true"}
+      - LAUNCH_FILE=${GAZEBO_LAUNCH_FILE:-gazebo.launch.py}
+      - LAUNCH_ARGS=${GAZEBO_LAUNCH_ARGS:-}
 
     volumes:
       # X11 socket for GUI
@@ -70,5 +70,5 @@ services:
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
         colcon build --symlink-install --packages-ignore localization monocular_depth depth_comparison;
         source /work/ws/install/setup.bash;
-        ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS} localization_mode:=$${LOCALIZATION_MODE}
+        ros2 launch $${LAUNCH_PKG} $${LAUNCH_FILE} $${LAUNCH_ARGS} localization_mode:=$${LOCALIZATION_MODE} use_sim_time:=$${USE_SIM_TIME}
       "

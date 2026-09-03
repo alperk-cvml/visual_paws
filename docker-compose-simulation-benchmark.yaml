@@ -1,0 +1,18 @@
+# V0 deterministic Gazebo geometry benchmark.
+#
+# Usage:
+#   docker compose --env-file simulation-benchmark.env \
+#     -f docker-compose-simulation-benchmark.yaml up -d --build
+#
+# Override the YAML seed without editing the scenario:
+#   SIM_BENCHMARK_SEED=43 docker compose \
+#     --env-file simulation-benchmark.env \
+#     -f docker-compose-simulation-benchmark.yaml up -d --build
+
+include:
+  - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/dept_image_proc/docker-compose.yaml
+  - path: src/elevation_mapping_cupy_pkg/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
+  - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_test_controller/docker-compose.yaml

@@ -1,0 +1,179 @@
+schema_version: 1
+name: v0_geometry
+
+# The source-of-truth seed. Use launch argument `seed:=config` to select this
+# value, or pass an integer deliberately for a different deterministic world.
+random_seed: 42
+
+world:
+  size: [18.0, 12.0]
+  height_samples: [257, 257]
+  base_elevation: 0.0
+  friction: 0.9
+  static_model_clearance: 0.003
+  # Clear daytime sky used for both the GUI and simulated RGB cameras.
+  sky_color: [0.45, 0.68, 0.92, 1.0]
+
+terrain:
+  base_roughness_amplitude: 0.008
+  correlation_length: 0.5
+
+spawn:
+  position: [-8.0, 3.0, 0.35]
+  yaw: 0.0
+
+clear_pads:
+  - {id: easy_start, center: [-8.0, 3.0], size: [1.2, 1.2]}
+  - {id: easy_finish, center: [8.0, 3.0], size: [1.2, 1.2]}
+  - {id: moderate_start, center: [-8.0, 0.0], size: [1.2, 1.2]}
+  - {id: moderate_finish, center: [8.0, 0.0], size: [1.2, 1.2]}
+  - {id: hard_start, center: [-8.0, -3.0], size: [1.2, 1.2]}
+  - {id: hard_finish, center: [8.0, -3.0], size: [1.2, 1.2]}
+
+lanes:
+  - id: easy
+    center_y: 3.0
+    difficulty: easy
+    finish_region: {center: [8.0, 3.0], size: [1.2, 1.2]}
+    features:
+      - id: easy_rough
+        type: rough_patch
+        center: [-6.3, 3.0]
+        size: [1.2, 1.6]
+        amplitude: 0.005
+        correlation_length: 0.25
+      - id: easy_slope
+        type: slope
+        center: [-4.7, 3.0]
+        size: [1.5, 1.6]
+        slope_rad: 0.087
+      - id: easy_rocks
+        type: rock_field
+        center: [-2.7, 3.0]
+        size: [1.2, 1.6]
+        count: 7
+        height_range: [0.01, 0.02]
+      - id: easy_rubble
+        type: rubble_field
+        center: [-0.7, 3.0]
+        size: [1.2, 1.6]
+        count: 5
+        block_size_range: [0.02, 0.04]
+      - id: easy_ditch
+        type: ditch
+        center: [1.5, 3.0]
+        size: [0.25, 1.8]
+        depth: 0.08
+        allow_overlap_with: [easy_bridge]
+      - id: easy_bridge
+        type: bridge
+        center: [1.5, 3.0]
+        size: [0.55, 0.70]
+        thickness: 0.04
+        clearance: 0.02
+        allow_overlap_with: [easy_ditch]
+      - id: easy_passage
+        type: passage
+        center: [4.2, 3.0]
+        size: [1.4, 1.6]
+        passage_width: 0.70
+        wall_thickness: 0.12
+        wall_height: 0.30
+
+  - id: moderate
+    center_y: 0.0
+    difficulty: moderate
+    finish_region: {center: [8.0, 0.0], size: [1.2, 1.2]}
+    features:
+      - id: moderate_rough
+        type: rough_patch
+        center: [-6.3, 0.0]
+        size: [1.2, 1.6]
+        amplitude: 0.012
+        correlation_length: 0.20
+      - id: moderate_slope
+        type: slope
+        center: [-4.7, 0.0]
+        size: [1.5, 1.6]
+        slope_rad: 0.175
+      - id: moderate_rocks
+        type: rock_field
+        center: [-2.7, 0.0]
+        size: [1.2, 1.6]
+        count: 10
+        height_range: [0.02, 0.04]
+      - id: moderate_rubble
+        type: rubble_field
+        center: [-0.7, 0.0]
+        size: [1.2, 1.6]
+        count: 8
+        block_size_range: [0.03, 0.06]
+      - id: moderate_ditch
+        type: ditch
+        center: [1.5, 0.0]
+        size: [0.40, 1.8]
+        depth: 0.12
+        allow_overlap_with: [moderate_bridge]
+      - id: moderate_bridge
+        type: bridge
+        center: [1.5, 0.0]
+        size: [0.70, 0.50]
+        thickness: 0.04
+        clearance: 0.02
+        allow_overlap_with: [moderate_ditch]
+      - id: moderate_passage
+        type: passage
+        center: [4.2, 0.0]
+        size: [1.4, 1.6]
+        passage_width: 0.50
+        wall_thickness: 0.12
+        wall_height: 0.30
+
+  - id: hard
+    center_y: -3.0
+    difficulty: hard
+    finish_region: {center: [8.0, -3.0], size: [1.2, 1.2]}
+    features:
+      - id: hard_rough
+        type: rough_patch
+        center: [-6.3, -3.0]
+        size: [1.2, 1.6]
+        amplitude: 0.025
+        correlation_length: 0.15
+      - id: hard_slope
+        type: slope
+        center: [-4.7, -3.0]
+        size: [1.5, 1.6]
+        slope_rad: 0.262
+      - id: hard_rocks
+        type: rock_field
+        center: [-2.7, -3.0]
+        size: [1.2, 1.6]
+        count: 14
+        height_range: [0.04, 0.07]
+      - id: hard_rubble
+        type: rubble_field
+        center: [-0.7, -3.0]
+        size: [1.2, 1.6]
+        count: 12
+        block_size_range: [0.04, 0.08]
+      - id: hard_ditch
+        type: ditch
+        center: [1.5, -3.0]
+        size: [0.60, 1.8]
+        depth: 0.18
+        allow_overlap_with: [hard_bridge]
+      - id: hard_bridge
+        type: bridge
+        center: [1.5, -3.0]
+        size: [0.90, 0.35]
+        thickness: 0.04
+        clearance: 0.02
+        allow_overlap_with: [hard_ditch]
+      - id: hard_passage
+        type: passage
+        center: [4.2, -3.0]
+        size: [1.4, 1.6]
+        passage_width: 0.35
+        wall_thickness: 0.12
+        wall_height: 0.30
