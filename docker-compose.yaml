@@ -13,6 +13,7 @@ include:
   - path: src/dept_image_proc/docker-compose.yaml
   - path: src/elevation_mapping_cupy_pkg/docker-compose.yaml
   - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_leg_odometry/docker-compose.yaml
   - path: src/quadruped_test_controller/docker-compose.yaml
   - path: src/nav2_mppi_navigation/docker-compose.yaml
   - path: src/monocular_depth/docker-compose.yaml

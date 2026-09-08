@@ -47,6 +47,7 @@ STEP_HEIGHT     = 0.015  # metres — swing foot lift
 MAX_STEP_LENGTH = 0.08   # metres — maximum stride stroke
 MAX_LATERAL     = 0.04   # metres — maximum lateral stroke
 PUBLISH_RATE_HZ = 50     # Hz — control loop rate
+CMD_TIMEOUT     = 0.5    # seconds — stop if /cmd_vel goes stale (dead publisher)
 
 # ── Leg table ────────────────────────────────────────────────────────────────
 LEGS = ('FL', 'FR', 'RL', 'RR')
@@ -99,7 +100,9 @@ def leg_ik(foot_x: float, foot_y: float, foot_z: float,
     cos_knee = max(-1.0, min(1.0, cos_knee))
     knee = -(math.pi - math.acos(cos_knee))   # negative per URDF convention
 
-    alpha = math.atan2(foot_x, r_chain)
+    # URDF pitch axes are +y, so positive hip_pitch/knee swing the foot
+    # backward (-x): the sagittal angles are solved against -foot_x.
+    alpha = math.atan2(-foot_x, r_chain)
     cos_gamma = (L1**2 + r**2 - L2**2) / (2.0 * L1 * r)
     cos_gamma = max(-1.0, min(1.0, cos_gamma))
     hip_pitch = alpha + math.acos(cos_gamma)
@@ -127,6 +130,7 @@ class GaitNode(Node):
         self._cmd_vx = 0.0
         self._cmd_vy = 0.0
         self._cmd_omega = 0.0
+        self._last_cmd_time = None
 
         self._vx = 0.0
         self._vy = 0.0
@@ -140,8 +144,8 @@ class GaitNode(Node):
         # Pre-compute nominal standing foot position (relative to hip)
         z_stand = -(L1 * math.cos(STAND_HIP_PITCH) +
                     L2 * math.cos(STAND_HIP_PITCH + STAND_KNEE))
-        x_stand = L1 * math.sin(STAND_HIP_PITCH) + \
-                  L2 * math.sin(STAND_HIP_PITCH + STAND_KNEE)
+        x_stand = -(L1 * math.sin(STAND_HIP_PITCH) +
+                    L2 * math.sin(STAND_HIP_PITCH + STAND_KNEE))
         self._z_stand = z_stand
         self._x_stand = x_stand
 
@@ -161,9 +165,19 @@ class GaitNode(Node):
         self._cmd_vx = float(msg.linear.x)
         self._cmd_vy = float(msg.linear.y)
         self._cmd_omega = float(msg.angular.z)
+        self._last_cmd_time = self.get_clock().now()
 
     def _tick(self):
         dt = 1.0 / PUBLISH_RATE_HZ
+
+        # Watchdog: a quit teleop or crashed planner must not leave the last
+        # command latched forever.
+        if self._last_cmd_time is not None:
+            age = (self.get_clock().now() - self._last_cmd_time).nanoseconds
+            if age > CMD_TIMEOUT * 1e9:
+                self._cmd_vx = 0.0
+                self._cmd_vy = 0.0
+                self._cmd_omega = 0.0
 
         # Smooth velocity with acceleration limits
         dvx = self._cmd_vx - self._vx

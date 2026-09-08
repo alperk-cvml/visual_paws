@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  quadruped_leg_odometry:
+    image: quadruped-leg-odometry:jazzy
+    container_name: quadruped_leg_odometry
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      # Sim uses /joint_states + /imu/data by default; override per profile.
+      - JOINT_STATES_TOPIC=${JOINT_STATES_TOPIC:-/joint_states}
+      - IMU_TOPIC=${IMU_TOPIC:-/imu/data}
+      - ODOM_LKO_TOPIC=${ODOM_LKO_TOPIC:-/odom_lko}
+      # odom->base_link belongs to the EKF / ground-truth publisher.
+      - LKO_PUBLISH_TF=${LKO_PUBLISH_TF:-false}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    # List form on purpose — see src/depth_comparison/docker-compose.yaml for
+    # why a single-string command would split the launch arguments onto their
+    # own lines and run `ros2 launch` bare.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-select quadruped_leg_odometry
+        source /work/ws/install/setup.bash
+        ros2 launch quadruped_leg_odometry leg_odometry.launch.py \
+          use_sim_time:=$${USE_SIM_TIME} \
+          joint_states_topic:=$${JOINT_STATES_TOPIC} \
+          imu_topic:=$${IMU_TOPIC} \
+          odom_topic:=$${ODOM_LKO_TOPIC} \
+          publish_tf:=$${LKO_PUBLISH_TF}

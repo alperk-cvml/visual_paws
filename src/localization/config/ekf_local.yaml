@@ -25,6 +25,20 @@
     odom0_relative: false
     odom0_queue_size: 10
 
+    # Leg-kinematics odometry (quadruped_leg_odometry container). To switch
+    # from ground truth, delete the odom0 block above and uncomment this one.
+    # Fuse the body-frame twist only — the integrated LKO pose drifts and its
+    # covariance grows accordingly; the EKF should integrate velocities itself.
+    # odom0: /odom_lko
+    # odom0_config: [false, false, false,
+    #                false, false, false,
+    #                true,  true,  true,
+    #                false, false, true,
+    #                false, false, false]
+    # odom0_differential: false
+    # odom0_relative: false
+    # odom0_queue_size: 10
+
     imu0: /imu/data
     imu0_config: [false, false, false,
                   true,  true,  true,

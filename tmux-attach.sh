@@ -22,6 +22,7 @@ CONTAINERS=(
   localization
   nav2_mppi_navigation
   quadruped_gait_controller
+  quadruped_leg_odometry
   quadruped_test_controller
   video_camera_sim
 )
