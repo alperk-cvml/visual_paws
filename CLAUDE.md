@@ -388,6 +388,7 @@ Gait Controller (Phase 1–2) / RL Policy (Phase 3)
 - `src/video_camera_sim/` — Plays pre-recorded video files as `/camera/image_raw` + `/camera/camera_info` for offline testing of perception and localization pipelines. Configurable FPS, loop, and camera intrinsics.
 - `src/monocular_depth/` — (Phase 2) Depth Anything V2 + Metric3D V2 inference node. TensorRT FP16 export for Jetson. Publishes metric depth and surface normals.
 - `src/depth_comparison/` — Runs N depth backends on the *same* RGB frame and publishes one metric depth image + point cloud per model under `/depth_compare/<key>/`. Backends: Gazebo depth sensor (relay reference), Depth Anything V2 (VKITTI + Hypersim checkpoints), Metric3D V2. Add a model by implementing `DepthBackend` and registering it in `backends/__init__.py`. Contains `compat/mmcv/`, a deliberate mmengine-backed shim for Metric3D's mmcv 1.x imports.
+- `src/ground_plane_estimation/` — RANSAC ground plane from any depth point cloud; publishes `/ground_plane[/<key>]/{distance,camera_height,scale,marker}`. The kinetic scale-hypothesis probe: with a height reference (`odom` z=0 in ground-truth sim, or a nominal standing height), `scale` = camera-to-plane distance / expected camera height ≈ per-frame monocular depth scale factor. One estimator per input topic; pairs with the depth comparison channels via `GROUND_PLANE_INPUT_TOPICS`.
 - `src/elevation_mapping_cupy_pkg/` — GPU elevation map (3m×3m, 5cm resolution, 2 Hz). Ingests point cloud + surface normals for covariance-weighted fusion. Vendored `elevation_mapping_cupy` repo.
 - `src/traversability_estimation/` — (Phase 2) Computes traversability costmap from elevation map: slope angle, roughness (height variance), step height against leg reach limits. Publishes `nav_msgs/OccupancyGrid`.
 - `src/localization/` — (Phase 2) ORB-SLAM3 in RGBD mode (monocular depth as D channel) + `robot_localization` EKF fusing LKO + SLAM + IMU. LKO is the primary short-horizon source; SLAM provides loop-closure drift correction.
@@ -526,10 +527,16 @@ Now the pipeline is working. But Depth Anything V2 has a huge scale problem. I w
 
 - [x] Step 0: DepthAnything V2.
 - [x] Step 00: ROS Depth Sensor module
-- [ ] Step 1: DAV2 VKITTI
-- [ ] Step 2: DAV2 Hypersim
-- [ ] Step 3: Metric3D-v2-S
+- [X] Step 1: DAV2 VKITTI
+- [X] Step 2: DAV2 Hypersim
+- [X] Step 3: Metric3D-v2-S
 
 I'll thest these in two phases:
 - [] Phase 1: ROS2 Gazebo <-- We are here
 - [] Phase 2: On pre-recorded (iphone) videos
+
+Seems like Metric3D is currently the closest alternative.
+
+We will take a detour. I'll try if I can solve the depth problem kinetically. I have two alternatives
+ - [ ] Alternative 1: Solve it via ground plane distance
+ - [ ] Alternative 2: Use IMU and leg odometry to estimate the motion and compare it to the motion of inferred with monodepth pointcloud.

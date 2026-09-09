@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  ground_plane_estimation:
+    image: ground-plane-estimation:jazzy
+    container_name: ground_plane_estimation
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      # Comma-separated clouds; one estimator per topic. For the depth
+      # comparison profile point this at the /depth_compare/<key>/points set.
+      - GROUND_PLANE_INPUT_TOPICS=${GROUND_PLANE_INPUT_TOPICS:-/depth_camera/points}
+      - GROUND_PLANE_NAMESPACE=${GROUND_PLANE_NAMESPACE:-/ground_plane}
+      - GROUND_PLANE_BASE_FRAME=${GROUND_PLANE_BASE_FRAME:-base_link}
+      # Scale reference: a static standing height (m), or a TF frame whose
+      # z=0 plane is the ground (`odom` under LOCALIZATION_MODE=ground_truth).
+      - GROUND_PLANE_EXPECTED_BASE_HEIGHT=${GROUND_PLANE_EXPECTED_BASE_HEIGHT:-0.0}
+      - GROUND_PLANE_HEIGHT_REFERENCE_FRAME=${GROUND_PLANE_HEIGHT_REFERENCE_FRAME:-odom}
+      - GROUND_PLANE_TARGET_FPS=${GROUND_PLANE_TARGET_FPS:-5.0}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    # List form on purpose — see src/depth_comparison/docker-compose.yaml for
+    # why a single-string command would split the launch arguments onto their
+    # own lines and run `ros2 launch` bare.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-select ground_plane_estimation
+        source /work/ws/install/setup.bash
+        ros2 launch ground_plane_estimation ground_plane.launch.py \
+          input_topics:=$${GROUND_PLANE_INPUT_TOPICS} \
+          output_namespace:=$${GROUND_PLANE_NAMESPACE} \
+          base_frame:=$${GROUND_PLANE_BASE_FRAME} \
+          expected_base_height:=$${GROUND_PLANE_EXPECTED_BASE_HEIGHT} \
+          height_reference_frame:=$${GROUND_PLANE_HEIGHT_REFERENCE_FRAME} \
+          target_fps:=$${GROUND_PLANE_TARGET_FPS} \
+          use_sim_time:=$${USE_SIM_TIME}

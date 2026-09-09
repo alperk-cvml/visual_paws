@@ -23,6 +23,7 @@ CONTAINERS=(
   nav2_mppi_navigation
   quadruped_gait_controller
   quadruped_leg_odometry
+  ground_plane_estimation
   quadruped_test_controller
   video_camera_sim
 )
