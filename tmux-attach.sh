@@ -20,6 +20,7 @@ CONTAINERS=(
   monocular_depth
   depth_comparison
   localization
+  lidar_odometry
   nav2_mppi_navigation
   quadruped_gait_controller
   quadruped_leg_odometry
