@@ -1,79 +1,114 @@
 <?xml version="1.0"?>
 <!--
-  Quadrupedal Robot URDF/Xacro Model
-  Inspired by robots like HiWonder MechDog / Puppy
-  12 DOF: 3 joints per leg (hip_roll, hip_pitch, knee_pitch) x 4 legs
+  Spot Micro quadruped — URDF/Xacro model for Gazebo Harmonic.
 
-  Leg naming convention:
-    FL = Front Left
-    FR = Front Right
-    RL = Rear Left
-    RR = Rear Right
+  Geometry follows the open-source Spot Micro (KDY0532 / mike4192 spotMicro):
+    0.186 m between front and rear hip pivots, 0.078 m between left and right,
+    0.055 m abduction ("shoulder") link, 0.1075 m upper leg, 0.130 m lower leg.
+  12 DOF: hip_roll (abduction), hip_pitch, knee per leg. All four knees point
+  backward (Spot configuration): the upper leg angles back from the hip and
+  the lower leg folds forward under the body, so the knee angle is always
+  negative.
+
+  Leg naming: FL / FR / RL / RR (front/rear, left/right).
+
+  The link lengths here are mirrored in python by
+  src/quadruped_kinematics/quadruped_kinematics/geometry.py; a unit test in
+  that package parses this file and fails if the two disagree. Change the
+  geometry in both places or not at all.
 -->
 <robot name="quadruped" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- ===================== PROPERTIES ===================== -->
+  <!-- ===================== GEOMETRY (metres, kg) ===================== -->
 
-  <!-- Body dimensions -->
-  <xacro:property name="body_length" value="0.25"/>
-  <xacro:property name="body_width"  value="0.12"/>
-  <xacro:property name="body_height" value="0.055"/>
-  <xacro:property name="body_mass"   value="1.2"/>
-
-  <!-- Hip offset from body center -->
-  <xacro:property name="hip_x_offset" value="0.10"/>
-  <xacro:property name="hip_y_offset" value="0.065"/>
-  <xacro:property name="hip_z_offset" value="0.0"/>
-
-  <!-- Hip link dimensions -->
-  <xacro:property name="hip_length" value="0.04"/>
-  <xacro:property name="hip_radius" value="0.018"/>
-  <xacro:property name="hip_mass"   value="0.08"/>
-
-  <!-- Thigh link dimensions -->
-  <xacro:property name="thigh_length" value="0.085"/>
-  <xacro:property name="thigh_radius" value="0.014"/>
-  <xacro:property name="thigh_mass"   value="0.10"/>
-
-  <!-- Calf (shin) link dimensions -->
-  <xacro:property name="calf_length" value="0.095"/>
-  <xacro:property name="calf_radius" value="0.012"/>
-  <xacro:property name="calf_mass"   value="0.06"/>
-
-  <!-- Foot sphere -->
+  <!-- Leg kinematic parameters — keep in sync with quadruped_kinematics -->
+  <xacro:property name="hip_x"       value="0.093"/>   <!-- half the hip-to-hip length -->
+  <xacro:property name="hip_y"       value="0.039"/>   <!-- half the hip-to-hip width -->
+  <xacro:property name="hip_link"    value="0.055"/>   <!-- abduction link, pivot to leg plane -->
+  <xacro:property name="upper_leg"   value="0.1075"/>
+  <xacro:property name="lower_leg"   value="0.130"/>
   <xacro:property name="foot_radius" value="0.015"/>
+
+  <!-- Nominal stand: base_link height above ground. The gait controller's
+       body_height parameter defaults to the same value; ros2_control
+       initial_value is derived from it below so the robot spawns standing. -->
+  <xacro:property name="stand_height" value="0.16"/>
+
+  <!-- Body shell (main chassis + head + tail), all one rigid link -->
+  <xacro:property name="body_length" value="0.20"/>
+  <xacro:property name="body_width"  value="0.09"/>
+  <xacro:property name="body_height" value="0.06"/>
+  <xacro:property name="head_length" value="0.07"/>
+  <xacro:property name="head_width"  value="0.08"/>
+  <xacro:property name="head_height" value="0.05"/>
+  <xacro:property name="tail_length" value="0.05"/>
+  <xacro:property name="body_mass"   value="1.30"/>
+
+  <!-- Leg link visuals/masses. Hip and upper leg each house a servo. -->
+  <xacro:property name="hip_box_x"  value="0.060"/>
+  <xacro:property name="hip_box_z"  value="0.045"/>
+  <xacro:property name="hip_mass"   value="0.15"/>
+  <xacro:property name="upper_box_x" value="0.030"/>
+  <xacro:property name="upper_box_y" value="0.025"/>
+  <xacro:property name="upper_mass"  value="0.16"/>
+  <xacro:property name="lower_box_x" value="0.020"/>
+  <xacro:property name="lower_box_y" value="0.015"/>
+  <xacro:property name="lower_mass"  value="0.05"/>
   <xacro:property name="foot_mass"   value="0.02"/>
 
-  <!-- Joint limits (radians) -->
-  <xacro:property name="hip_roll_min"  value="-0.6"/>
-  <xacro:property name="hip_roll_max"  value="0.6"/>
+  <!-- Joint limits (rad). Knee never passes through straight. -->
+  <xacro:property name="hip_roll_min"  value="-0.75"/>
+  <xacro:property name="hip_roll_max"  value="0.75"/>
   <xacro:property name="hip_pitch_min" value="-1.2"/>
-  <xacro:property name="hip_pitch_max" value="1.2"/>
-  <xacro:property name="knee_min"      value="-2.5"/>
-  <xacro:property name="knee_max"      value="-0.3"/>
+  <xacro:property name="hip_pitch_max" value="1.6"/>
+  <xacro:property name="knee_min"      value="-2.7"/>
+  <xacro:property name="knee_max"      value="-0.35"/>
 
-  <!-- Joint effort / velocity limits -->
-  <xacro:property name="joint_effort"   value="15.0"/>
-  <xacro:property name="joint_velocity" value="10.0"/>
+  <!-- 35 kg·cm class hobby servo: ~3.4 N·m stall, ~0.15 s / 60° -->
+  <xacro:property name="joint_effort"   value="3.4"/>
+  <xacro:property name="joint_velocity" value="7.0"/>
+  <xacro:property name="joint_damping"  value="0.02"/>
+  <xacro:property name="joint_friction" value="0.02"/>
+
+  <!-- Stand pose derived from the geometry: foot straight below the hip
+       pitch joint at reach h = stand_height - foot_radius (2-link IK). -->
+  <xacro:property name="stand_reach" value="${stand_height - foot_radius}"/>
+  <xacro:property name="stand_knee"
+    value="${-acos((stand_reach**2 - upper_leg**2 - lower_leg**2) / (2*upper_leg*lower_leg))}"/>
+  <xacro:property name="stand_hip_pitch"
+    value="${acos((upper_leg**2 + stand_reach**2 - lower_leg**2) / (2*upper_leg*stand_reach))}"/>
+
+  <!-- ICM-42688-P-class low-cost 6-axis IMU profile.
+
+       The white-noise values are the datasheet RMS figures for a 100 Hz
+       bandwidth (appropriate for the 200 Hz output rate below). Bias limits
+       are treated as 3-sigma turn-on errors. Gazebo's slow bias process is a
+       practical approximation because the real temperature history is not
+       simulated. All values use REP-103 SI units. -->
+  <xacro:property name="imu_update_rate" value="200.0"/>
+  <xacro:property name="imu_gyro_noise_stddev" value="0.0004886921906"/>
+  <xacro:property name="imu_gyro_bias_stddev" value="0.002908882087"/>
+  <xacro:property name="imu_gyro_dynamic_bias_stddev" value="0.0000872664626"/>
+  <xacro:property name="imu_gyro_dynamic_bias_correlation_time" value="300.0"/>
+  <xacro:property name="imu_gyro_precision" value="0.001065264436"/>
+  <xacro:property name="imu_accel_xy_noise_stddev" value="0.0063743225"/>
+  <xacro:property name="imu_accel_z_noise_stddev" value="0.006864655"/>
+  <xacro:property name="imu_accel_bias_stddev" value="0.06537766667"/>
+  <xacro:property name="imu_accel_dynamic_bias_stddev" value="0.004903325"/>
+  <xacro:property name="imu_accel_dynamic_bias_correlation_time" value="300.0"/>
+  <xacro:property name="imu_accel_precision" value="0.00478840332"/>
 
   <!-- Colors -->
-  <material name="dark_grey">
-    <color rgba="0.2 0.2 0.2 1.0"/>
-  </material>
-  <material name="light_grey">
-    <color rgba="0.6 0.6 0.6 1.0"/>
-  </material>
-  <material name="orange">
-    <color rgba="1.0 0.5 0.0 1.0"/>
-  </material>
-  <material name="black">
-    <color rgba="0.05 0.05 0.05 1.0"/>
-  </material>
+  <material name="yellow"><color rgba="0.95 0.75 0.10 1.0"/></material>
+  <material name="dark_grey"><color rgba="0.20 0.20 0.20 1.0"/></material>
+  <material name="light_grey"><color rgba="0.65 0.65 0.65 1.0"/></material>
+  <material name="black"><color rgba="0.05 0.05 0.05 1.0"/></material>
 
   <!-- ===================== INERTIA MACROS ===================== -->
 
-  <xacro:macro name="box_inertia" params="m x y z">
+  <xacro:macro name="box_inertial" params="m x y z *origin">
     <inertial>
+      <xacro:insert_block name="origin"/>
       <mass value="${m}"/>
       <inertia ixx="${m*(y*y+z*z)/12}" ixy="0" ixz="0"
                iyy="${m*(x*x+z*z)/12}" iyz="0"
@@ -81,16 +116,7 @@
     </inertial>
   </xacro:macro>
 
-  <xacro:macro name="cylinder_inertia" params="m r l">
-    <inertial>
-      <mass value="${m}"/>
-      <inertia ixx="${m*(3*r*r+l*l)/12}" ixy="0" ixz="0"
-               iyy="${m*(3*r*r+l*l)/12}" iyz="0"
-               izz="${m*r*r/2}"/>
-    </inertial>
-  </xacro:macro>
-
-  <xacro:macro name="sphere_inertia" params="m r">
+  <xacro:macro name="sphere_inertial" params="m r">
     <inertial>
       <mass value="${m}"/>
       <inertia ixx="${2*m*r*r/5}" ixy="0" ixz="0"
@@ -101,144 +127,174 @@
 
   <!-- ===================== LEG MACRO ===================== -->
   <!--
-    Params:
-      prefix   : FL | FR | RL | RR
-      x_sign   : +1 (front) | -1 (rear)
-      y_sign   : +1 (left)  | -1 (right)
+    prefix : FL | FR | RL | RR
+    x_sign : +1 front | -1 rear
+    y_sign : +1 left  | -1 right
   -->
   <xacro:macro name="leg" params="prefix x_sign y_sign">
 
-    <!-- ── HIP ROLL JOINT ── -->
+    <!-- HIP ROLL (abduction) — pivot on the body side -->
     <joint name="${prefix}_hip_roll_joint" type="revolute">
       <parent link="base_link"/>
       <child  link="${prefix}_hip_link"/>
-      <origin xyz="${x_sign*hip_x_offset} ${y_sign*hip_y_offset} ${hip_z_offset}" rpy="0 0 0"/>
+      <origin xyz="${x_sign*hip_x} ${y_sign*hip_y} 0" rpy="0 0 0"/>
       <axis xyz="1 0 0"/>
       <limit lower="${hip_roll_min}" upper="${hip_roll_max}"
              effort="${joint_effort}" velocity="${joint_velocity}"/>
-      <dynamics damping="0.1" friction="0.05"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
     </joint>
 
+    <!-- Hip link: servo block carrying the leg plane outboard -->
     <link name="${prefix}_hip_link">
-      <xacro:cylinder_inertia m="${hip_mass}" r="${hip_radius}" l="${hip_length}"/>
+      <xacro:box_inertial m="${hip_mass}" x="${hip_box_x}" y="${hip_link}" z="${hip_box_z}">
+        <origin xyz="0 ${y_sign*hip_link/2} 0" rpy="0 0 0"/>
+      </xacro:box_inertial>
       <visual>
-        <origin xyz="0 ${y_sign*hip_length/2} 0" rpy="${pi/2} 0 0"/>
-        <geometry>
-          <cylinder radius="${hip_radius}" length="${hip_length}"/>
-        </geometry>
-        <material name="orange"/>
-      </visual>
-      <collision>
-        <origin xyz="0 ${y_sign*hip_length/2} 0" rpy="${pi/2} 0 0"/>
-        <geometry>
-          <cylinder radius="${hip_radius}" length="${hip_length}"/>
-        </geometry>
-      </collision>
-    </link>
-
-    <!-- ── HIP PITCH JOINT ── -->
-    <joint name="${prefix}_hip_pitch_joint" type="revolute">
-      <parent link="${prefix}_hip_link"/>
-      <child  link="${prefix}_thigh_link"/>
-      <origin xyz="0 ${y_sign*hip_length} 0" rpy="0 0 0"/>
-      <axis xyz="0 1 0"/>
-      <limit lower="${hip_pitch_min}" upper="${hip_pitch_max}"
-             effort="${joint_effort}" velocity="${joint_velocity}"/>
-      <dynamics damping="0.1" friction="0.05"/>
-    </joint>
-
-    <link name="${prefix}_thigh_link">
-      <xacro:cylinder_inertia m="${thigh_mass}" r="${thigh_radius}" l="${thigh_length}"/>
-      <visual>
-        <origin xyz="0 0 ${-thigh_length/2}" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="${thigh_radius}" length="${thigh_length}"/>
-        </geometry>
-        <material name="light_grey"/>
-      </visual>
-      <collision>
-        <origin xyz="0 0 ${-thigh_length/2}" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="${thigh_radius}" length="${thigh_length}"/>
-        </geometry>
-      </collision>
-    </link>
-
-    <!-- ── KNEE PITCH JOINT ── -->
-    <joint name="${prefix}_knee_joint" type="revolute">
-      <parent link="${prefix}_thigh_link"/>
-      <child  link="${prefix}_calf_link"/>
-      <origin xyz="0 0 ${-thigh_length}" rpy="0 0 0"/>
-      <axis xyz="0 1 0"/>
-      <limit lower="${knee_min}" upper="${knee_max}"
-             effort="${joint_effort}" velocity="${joint_velocity}"/>
-      <dynamics damping="0.1" friction="0.05"/>
-    </joint>
-
-    <link name="${prefix}_calf_link">
-      <xacro:cylinder_inertia m="${calf_mass}" r="${calf_radius}" l="${calf_length}"/>
-      <visual>
-        <origin xyz="0 0 ${-calf_length/2}" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="${calf_radius}" length="${calf_length}"/>
-        </geometry>
+        <origin xyz="0 ${y_sign*hip_link/2} 0" rpy="0 0 0"/>
+        <geometry><box size="${hip_box_x} ${hip_link} ${hip_box_z}"/></geometry>
         <material name="dark_grey"/>
       </visual>
       <collision>
-        <origin xyz="0 0 ${-calf_length/2}" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="${calf_radius}" length="${calf_length}"/>
-        </geometry>
+        <origin xyz="0 ${y_sign*hip_link/2} 0" rpy="0 0 0"/>
+        <geometry><box size="${hip_box_x} ${hip_link} ${hip_box_z}"/></geometry>
       </collision>
     </link>
 
-    <!-- ── FOOT (fixed) ── -->
+    <!-- HIP PITCH — in the leg plane, outboard end of the hip link -->
+    <joint name="${prefix}_hip_pitch_joint" type="revolute">
+      <parent link="${prefix}_hip_link"/>
+      <child  link="${prefix}_upper_leg_link"/>
+      <origin xyz="0 ${y_sign*hip_link} 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${hip_pitch_min}" upper="${hip_pitch_max}"
+             effort="${joint_effort}" velocity="${joint_velocity}"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+
+    <link name="${prefix}_upper_leg_link">
+      <xacro:box_inertial m="${upper_mass}" x="${upper_box_x}" y="${upper_box_y}" z="${upper_leg}">
+        <origin xyz="0 0 ${-upper_leg/2}" rpy="0 0 0"/>
+      </xacro:box_inertial>
+      <visual>
+        <origin xyz="0 0 ${-upper_leg/2}" rpy="0 0 0"/>
+        <geometry><box size="${upper_box_x} ${upper_box_y} ${upper_leg}"/></geometry>
+        <material name="yellow"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 ${-upper_leg/2}" rpy="0 0 0"/>
+        <geometry><box size="${upper_box_x} ${upper_box_y} ${upper_leg}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- KNEE -->
+    <joint name="${prefix}_knee_joint" type="revolute">
+      <parent link="${prefix}_upper_leg_link"/>
+      <child  link="${prefix}_lower_leg_link"/>
+      <origin xyz="0 0 ${-upper_leg}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${knee_min}" upper="${knee_max}"
+             effort="${joint_effort}" velocity="${joint_velocity}"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+
+    <link name="${prefix}_lower_leg_link">
+      <xacro:box_inertial m="${lower_mass}" x="${lower_box_x}" y="${lower_box_y}" z="${lower_leg}">
+        <origin xyz="0 0 ${-lower_leg/2}" rpy="0 0 0"/>
+      </xacro:box_inertial>
+      <visual>
+        <origin xyz="0 0 ${-lower_leg/2}" rpy="0 0 0"/>
+        <geometry><box size="${lower_box_x} ${lower_box_y} ${lower_leg}"/></geometry>
+        <material name="light_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 ${-lower_leg/2}" rpy="0 0 0"/>
+        <geometry><box size="${lower_box_x} ${lower_box_y} ${lower_leg}"/></geometry>
+      </collision>
+    </link>
+
+    <!-- FOOT (fixed rubber ball) -->
     <joint name="${prefix}_foot_joint" type="fixed">
-      <parent link="${prefix}_calf_link"/>
+      <parent link="${prefix}_lower_leg_link"/>
       <child  link="${prefix}_foot_link"/>
-      <origin xyz="0 0 ${-calf_length}" rpy="0 0 0"/>
+      <origin xyz="0 0 ${-lower_leg}" rpy="0 0 0"/>
     </joint>
 
     <link name="${prefix}_foot_link">
-      <xacro:sphere_inertia m="${foot_mass}" r="${foot_radius}"/>
+      <xacro:sphere_inertial m="${foot_mass}" r="${foot_radius}"/>
       <visual>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry>
-          <sphere radius="${foot_radius}"/>
-        </geometry>
+        <geometry><sphere radius="${foot_radius}"/></geometry>
         <material name="black"/>
       </visual>
       <collision>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry>
-          <sphere radius="${foot_radius}"/>
-        </geometry>
-        <contact_coefficients mu="0.8" kp="1000000.0" kd="100.0"/>
+        <geometry><sphere radius="${foot_radius}"/></geometry>
       </collision>
     </link>
 
+    <gazebo reference="${prefix}_foot_link">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+      <kp>1000000.0</kp>
+      <kd>100.0</kd>
+    </gazebo>
+
+    <!-- Foot contact sensor (gz-sim); available for contact-based stance
+         detection, not bridged to ROS by default. The URDF→SDF conversion
+         lumps the fixed foot link into the lower leg and renames its
+         collision, so the sensor must name the lumped collision. -->
+    <gazebo reference="${prefix}_lower_leg_link">
+      <sensor name="${prefix}_foot_contact" type="contact">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <topic>${prefix}_foot_contact</topic>
+        <contact>
+          <collision>${prefix}_lower_leg_link_fixed_joint_lump__${prefix}_foot_link_collision_1</collision>
+        </contact>
+      </sensor>
+    </gazebo>
+
   </xacro:macro>
 
-  <!-- ===================== BASE LINK ===================== -->
+  <!-- ===================== BODY ===================== -->
 
   <link name="base_link">
-    <xacro:box_inertia m="${body_mass}" x="${body_length}" y="${body_width}" z="${body_height}"/>
+    <xacro:box_inertial m="${body_mass}" x="${body_length + head_length}" y="${body_width}" z="${body_height}">
+      <origin xyz="0.01 0 0" rpy="0 0 0"/>
+    </xacro:box_inertial>
+    <!-- main chassis -->
     <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="${body_length} ${body_width} ${body_height}"/>
-      </geometry>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+      <material name="yellow"/>
+    </visual>
+    <collision>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+    </collision>
+    <!-- head -->
+    <visual>
+      <origin xyz="${body_length/2 + head_length/2} 0 ${(body_height - head_height)/2}" rpy="0 0 0"/>
+      <geometry><box size="${head_length} ${head_width} ${head_height}"/></geometry>
       <material name="dark_grey"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="${body_length} ${body_width} ${body_height}"/>
-      </geometry>
+      <origin xyz="${body_length/2 + head_length/2} 0 ${(body_height - head_height)/2}" rpy="0 0 0"/>
+      <geometry><box size="${head_length} ${head_width} ${head_height}"/></geometry>
     </collision>
+    <!-- tail -->
+    <visual>
+      <origin xyz="${-(body_length/2 + tail_length/2)} 0 ${(body_height - head_height)/2}" rpy="0 0 0"/>
+      <geometry><box size="${tail_length} ${head_width} ${head_height}"/></geometry>
+      <material name="dark_grey"/>
+    </visual>
   </link>
 
-  <!-- IMU link (center of body) -->
+  <!-- base_footprint: base_link projected onto the ground (REP-105) -->
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="base_footprint"/>
+    <origin xyz="0 0 ${-stand_height}" rpy="0 0 0"/>
+  </joint>
+  <link name="base_footprint"/>
+
+  <!-- IMU at the body centre -->
   <joint name="imu_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="imu_link"/>
@@ -246,22 +302,21 @@
   </joint>
   <link name="imu_link"/>
 
-  <!-- Camera link (front face) -->
+  <!-- Camera on the front face of the head -->
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="camera_link"/>
-    <origin xyz="${body_length/2} 0 ${body_height/4}" rpy="0 0 0"/>
+    <origin xyz="${body_length/2 + head_length} 0 ${(body_height - head_height)/2 + 0.01}" rpy="0 0 0"/>
   </joint>
   <link name="camera_link">
     <visual>
-      <geometry>
-        <box size="0.015 0.06 0.015"/>
-      </geometry>
+      <origin xyz="-0.005 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.05 0.015"/></geometry>
       <material name="black"/>
     </visual>
   </link>
 
-  <!-- Camera optical link (rotated to ROS standard: Z-forward, X-right, Y-down) -->
+  <!-- Optical frame (z forward, x right, y down) -->
   <joint name="camera_optical_joint" type="fixed">
     <parent link="camera_link"/>
     <child  link="camera_link_optical"/>
@@ -269,18 +324,20 @@
   </joint>
   <link name="camera_link_optical"/>
 
-  <!-- ===================== INSTANTIATE LEGS ===================== -->
+  <!-- ===================== LEGS ===================== -->
 
   <xacro:leg prefix="FL" x_sign="1"  y_sign="1"/>
   <xacro:leg prefix="FR" x_sign="1"  y_sign="-1"/>
   <xacro:leg prefix="RL" x_sign="-1" y_sign="1"/>
   <xacro:leg prefix="RR" x_sign="-1" y_sign="-1"/>
 
-  <!-- ===================== ROS2_CONTROL HARDWARE ===================== -->
-  <!--
-    gz_ros2_control reads this block to bind each joint to the
-    GazeboSimSystem hardware interface.
-  -->
+  <!-- ===================== ROS2_CONTROL ===================== -->
+  <!-- gz_ros2_control binds each joint to the GazeboSimSystem hardware
+       interface. Position commands are tracked with a velocity loop whose
+       gain is the plugin's position_proportional_gain parameter (set in
+       config/ros2_control.yaml); joint effort limits above act as servo
+       stall torque. initial_value puts the robot in the stand pose so it
+       spawns standing instead of collapsing while the controllers load. -->
   <ros2_control name="GazeboSimSystem" type="system">
     <hardware>
       <plugin>gz_ros2_control/GazeboSimSystem</plugin>
@@ -289,27 +346,30 @@
     <xacro:macro name="leg_joints_hw" params="prefix">
       <joint name="${prefix}_hip_roll_joint">
         <command_interface name="position">
-          <param name="min">-0.6</param>
-          <param name="max">0.6</param>
+          <param name="min">${hip_roll_min}</param>
+          <param name="max">${hip_roll_max}</param>
         </command_interface>
         <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="${prefix}_hip_pitch_joint">
         <command_interface name="position">
-          <param name="min">-1.2</param>
-          <param name="max">1.2</param>
+          <param name="min">${hip_pitch_min}</param>
+          <param name="max">${hip_pitch_max}</param>
         </command_interface>
-        <state_interface name="position"><param name="initial_value">0.5</param></state_interface>
+        <state_interface name="position"><param name="initial_value">${stand_hip_pitch}</param></state_interface>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="${prefix}_knee_joint">
         <command_interface name="position">
-          <param name="min">-2.5</param>
-          <param name="max">-0.3</param>
+          <param name="min">${knee_min}</param>
+          <param name="max">${knee_max}</param>
         </command_interface>
-        <state_interface name="position"><param name="initial_value">-1.2</param></state_interface>
+        <state_interface name="position"><param name="initial_value">${stand_knee}</param></state_interface>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
     </xacro:macro>
 
@@ -319,15 +379,8 @@
     <xacro:leg_joints_hw prefix="RR"/>
   </ros2_control>
 
-  <!-- ===================== GAZEBO PLUGINS (Gazebo Harmonic / gz-sim) ===================== -->
-  <!--
-    All libgazebo_ros_*.so plugins are Gazebo Classic only.
-    Gazebo Harmonic uses gz-sim system plugins with the gz:: namespace.
-    Sensor data is bridged to ROS via ros_gz_bridge (see launch file).
-  -->
+  <!-- ===================== GAZEBO PLUGINS (gz-sim) ===================== -->
 
-  <!-- gz_ros2_control: replaces libgazebo_ros2_control.so -->
-  <!-- Also requires <ros2_control> tag in URDF (see below) and gz_ros2_control installed -->
   <gazebo>
     <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
       <parameters>$(find quadruped_gazebo)/config/ros2_control.yaml</parameters>
@@ -343,23 +396,49 @@
     </plugin>
   </gazebo>
 
-  <!-- IMU sensor (Gazebo Harmonic SDFormat style) -->
+  <!-- Low-cost commercial 6-axis IMU (Gazebo Harmonic SDFormat style).
+
+       This models an ICM-42688-P configured for +/-2000 deg/s and +/-16 g.
+       The simulator-provided orientation remains enabled for compatibility
+       with robot_localization; the commercial part itself measures angular
+       velocity and linear acceleration, not absolute orientation. -->
+  <xacro:macro name="imu_axis_noise" params="stddev bias_stddev dyn_bias_stddev dyn_bias_tau precision">
+    <noise type="gaussian_quantized">
+      <mean>0</mean><stddev>${stddev}</stddev>
+      <bias_mean>0</bias_mean><bias_stddev>${bias_stddev}</bias_stddev>
+      <dynamic_bias_stddev>${dyn_bias_stddev}</dynamic_bias_stddev>
+      <dynamic_bias_correlation_time>${dyn_bias_tau}</dynamic_bias_correlation_time>
+      <precision>${precision}</precision>
+    </noise>
+  </xacro:macro>
+  <xacro:macro name="imu_gyro_noise">
+    <xacro:imu_axis_noise stddev="${imu_gyro_noise_stddev}" bias_stddev="${imu_gyro_bias_stddev}"
+      dyn_bias_stddev="${imu_gyro_dynamic_bias_stddev}" dyn_bias_tau="${imu_gyro_dynamic_bias_correlation_time}"
+      precision="${imu_gyro_precision}"/>
+  </xacro:macro>
+  <xacro:macro name="imu_accel_noise" params="stddev">
+    <xacro:imu_axis_noise stddev="${stddev}" bias_stddev="${imu_accel_bias_stddev}"
+      dyn_bias_stddev="${imu_accel_dynamic_bias_stddev}" dyn_bias_tau="${imu_accel_dynamic_bias_correlation_time}"
+      precision="${imu_accel_precision}"/>
+  </xacro:macro>
+
   <gazebo reference="imu_link">
     <sensor name="imu_sensor" type="imu">
       <always_on>true</always_on>
-      <update_rate>200</update_rate>
+      <update_rate>${imu_update_rate}</update_rate>
       <topic>imu/data</topic>
       <gz_frame_id>imu_link</gz_frame_id>
+      <pose>0 0 0 0 0 0</pose>
       <imu>
         <angular_velocity>
-          <x><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></x>
-          <y><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></z>
+          <x><xacro:imu_gyro_noise/></x>
+          <y><xacro:imu_gyro_noise/></y>
+          <z><xacro:imu_gyro_noise/></z>
         </angular_velocity>
         <linear_acceleration>
-          <x><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></x>
-          <y><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0</mean><stddev>0.01</stddev></noise></z>
+          <x><xacro:imu_accel_noise stddev="${imu_accel_xy_noise_stddev}"/></x>
+          <y><xacro:imu_accel_noise stddev="${imu_accel_xy_noise_stddev}"/></y>
+          <z><xacro:imu_accel_noise stddev="${imu_accel_z_noise_stddev}"/></z>
         </linear_acceleration>
       </imu>
     </sensor>
@@ -375,11 +454,19 @@
        between the two would show up as a scale or parallax error that looks
        like a model defect.
 
-       Both publish with gz_frame_id camera_link_optical. Gazebo emits camera
-       images — and the depth camera's point cloud — in the optical convention
-       (z forward, x right, y down), which is what camera_link_optical encodes.
-       Stamping either one with the body frame camera_link would rotate its
-       point cloud 90 degrees relative to the other. -->
+       front_camera's image is genuinely in the optical convention (z forward,
+       x right, y down), so it is stamped camera_link_optical. depth_camera's
+       auto-generated PointCloud2 (the gz-sim depth_camera sensor's own
+       `<topic>/points`, not depth_image_proc) is different: gz-sim computes
+       those XYZ values in the body/REP-103 convention (x forward, y left,
+       z up) regardless of gz_frame_id, so it must stay stamped camera_link.
+       Verified empirically on a running sim: /depth_camera/depth_image/points
+       has x always positive (depth) with y/z spanning the FOV, while
+       /depth/points (Metric3D -> depth_image_proc, genuinely optical) has z
+       always positive instead. Mislabeling depth_camera as camera_link_optical
+       relabels the header without changing the underlying data, so anything
+       that trusts the frame_id (TF, RViz, ground_plane_estimation) sees it
+       rotated 90 degrees relative to every optical-frame cloud. -->
   <gazebo reference="camera_link">
     <sensor name="front_camera" type="camera">
       <always_on>true</always_on>
@@ -404,7 +491,7 @@
       <always_on>true</always_on>
       <update_rate>10</update_rate>
       <topic>depth_camera/depth_image</topic>
-      <gz_frame_id>camera_link_optical</gz_frame_id>
+      <gz_frame_id>camera_link</gz_frame_id>
       <pose>0 0 0 0 0 0</pose>
       <camera>
         <!-- FOV and clip planes match front_camera so the two views are
@@ -422,24 +509,5 @@
       </camera>
     </sensor>
   </gazebo>
-
-  <!-- Foot contact sensors (Gazebo Harmonic) -->
-  <xacro:macro name="foot_contact_sensor" params="prefix">
-    <gazebo reference="${prefix}_foot_link">
-      <sensor name="${prefix}_foot_contact" type="contact">
-        <always_on>true</always_on>
-        <update_rate>100</update_rate>
-        <topic>${prefix}_foot_contact</topic>
-        <contact>
-          <collision>${prefix}_foot_link_collision</collision>
-        </contact>
-      </sensor>
-    </gazebo>
-  </xacro:macro>
-
-  <xacro:foot_contact_sensor prefix="FL"/>
-  <xacro:foot_contact_sensor prefix="FR"/>
-  <xacro:foot_contact_sensor prefix="RL"/>
-  <xacro:foot_contact_sensor prefix="RR"/>
 
 </robot>

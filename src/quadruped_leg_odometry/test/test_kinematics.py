@@ -1,63 +1,50 @@
-"""Unit tests for leg FK, Jacobian, and the stance-velocity formula."""
-
-import math
+"""Unit tests for leg FK in base_link and the stance-velocity formula."""
 
 import numpy as np
 import pytest
 
+from quadruped_kinematics import SPOT_MICRO, hip_origin, leg_ik, stand_joint_angles
 from quadruped_leg_odometry.kinematics import (
-    HIP_LENGTH, HIP_X_OFFSET, HIP_Y_OFFSET, L1, L2, LEG_SIGNS, LEGS,
-    body_velocity_from_stance, leg_fk,
+    LEGS, LEG_SIGNS, body_velocity_from_stance, leg_fk,
 )
 
-# Standing pose used by the gait controller (must match gait_node.py).
-STAND = np.array([0.0, 0.5, -1.2])
+HEIGHT = 0.17
 
 
-def test_fk_stand_pose_matches_gait_controller_precomputation():
-    # gait_node.py precomputes the standing foot position relative to the hip:
-    z_stand = -(L1 * math.cos(0.5) + L2 * math.cos(0.5 - 1.2))
-    x_stand = -(L1 * math.sin(0.5) + L2 * math.sin(0.5 - 1.2))
-
-    for leg in LEGS:
+def test_fk_stand_pose_puts_feet_on_the_ground_under_the_hips():
+    q_all = stand_joint_angles(HEIGHT)
+    for i, leg in enumerate(LEGS):
         x_sign, y_sign = LEG_SIGNS[leg]
-        p, _ = leg_fk(STAND, x_sign, y_sign)
-        assert p[0] == pytest.approx(x_sign * HIP_X_OFFSET + x_stand, abs=1e-9)
-        assert p[1] == pytest.approx(y_sign * (HIP_Y_OFFSET + HIP_LENGTH), abs=1e-9)
-        assert p[2] == pytest.approx(z_stand, abs=1e-9)
+        p, _ = leg_fk(q_all[3 * i:3 * i + 3], leg)
+        assert p[0] == pytest.approx(x_sign * SPOT_MICRO.hip_x, abs=1e-9)
+        assert p[1] == pytest.approx(y_sign * (SPOT_MICRO.hip_y + SPOT_MICRO.hip_link), abs=1e-9)
+        assert p[2] == pytest.approx(-(HEIGHT - SPOT_MICRO.foot_radius), abs=1e-9)
 
 
 def test_jacobian_matches_finite_differences():
     rng = np.random.default_rng(42)
     eps = 1e-7
     for _ in range(20):
-        q = rng.uniform([-0.6, -1.2, -2.5], [0.6, 1.2, -0.3])
+        q = rng.uniform([-0.7, -1.0, -2.6], [0.7, 1.5, -0.4])
         for leg in LEGS:
-            x_sign, y_sign = LEG_SIGNS[leg]
-            _, jac = leg_fk(q, x_sign, y_sign)
+            _, jac = leg_fk(q, leg)
             for k in range(3):
                 dq = np.zeros(3)
                 dq[k] = eps
-                p_plus, _ = leg_fk(q + dq, x_sign, y_sign)
-                p_minus, _ = leg_fk(q - dq, x_sign, y_sign)
+                p_plus, _ = leg_fk(q + dq, leg)
+                p_minus, _ = leg_fk(q - dq, leg)
                 fd = (p_plus - p_minus) / (2 * eps)
                 assert np.allclose(jac[:, k], fd, atol=1e-6), (leg, k)
 
 
-def test_fk_round_trips_gait_controller_ik():
-    # The IK may legitimately return an alternate hip_roll/hip_pitch branch
-    # for the same foot point, so the invariant is FK(IK(FK(q))) == FK(q),
-    # not joint-space equality.
-    gait = pytest.importorskip('quadruped_gait_controller.gait_node')
+def test_fk_round_trips_shared_ik():
     rng = np.random.default_rng(7)
     for _ in range(50):
-        q = rng.uniform([-0.4, -0.8, -2.2], [0.4, 0.8, -0.5])
+        q = rng.uniform([-0.4, 0.2, -2.2], [0.4, 1.3, -0.6])
         for leg in LEGS:
-            x_sign, y_sign = LEG_SIGNS[leg]
-            p, _ = leg_fk(q, x_sign, y_sign)
-            # gait IK takes foot x relative to the hip, y/z relative to body.
-            sol = gait.leg_ik(p[0] - x_sign * HIP_X_OFFSET, p[1], p[2], y_sign)
-            p_back, _ = leg_fk(np.array(sol), x_sign, y_sign)
+            p, _ = leg_fk(q, leg)
+            sol = leg_ik(p - hip_origin(leg), LEG_SIGNS[leg][1])
+            p_back, _ = leg_fk(sol, leg)
             assert np.allclose(p_back, p, atol=1e-9)
 
 

@@ -41,8 +41,13 @@ def generate_launch_description():
     )
     declare_x = DeclareLaunchArgument("x_pose", default_value="0.0")
     declare_y = DeclareLaunchArgument("y_pose", default_value="0.0")
-    declare_z = DeclareLaunchArgument("z_pose", default_value="0.35")
+    declare_z = DeclareLaunchArgument("z_pose", default_value="0.20")
     declare_yaw = DeclareLaunchArgument("yaw_pose", default_value="0.0")
+    declare_headless = DeclareLaunchArgument(
+        "headless",
+        default_value="false",
+        description="Run only the Gazebo server (no GUI); for CI and tmux-only hosts",
+    )
     declare_localization_mode = DeclareLaunchArgument(
         "localization_mode",
         default_value="ground_truth",
@@ -83,7 +88,13 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "gz_args": ["-r ", LaunchConfiguration("world")],
+            "gz_args": [
+                PythonExpression([
+                    "'-s -r ' if '", LaunchConfiguration("headless"),
+                    "' == 'true' else '-r '",
+                ]),
+                LaunchConfiguration("world"),
+            ],
             "on_exit_shutdown": "true",
         }.items(),
     )
@@ -201,6 +212,7 @@ def generate_launch_description():
         declare_y,
         declare_z,
         declare_yaw,
+        declare_headless,
         declare_localization_mode,
         robot_state_publisher,
         gazebo,

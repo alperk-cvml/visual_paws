@@ -19,7 +19,7 @@ terrain:
   correlation_length: 0.5
 
 spawn:
-  position: [-8.0, 3.0, 0.35]
+  position: [-8.0, 3.0, 0.20]
   yaw: 0.0
 
 clear_pads:

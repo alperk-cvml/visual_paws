@@ -39,7 +39,7 @@ from rclpy.time import Time
 from sensor_msgs.msg import Imu, JointState
 
 from .imu_attitude import ComplementaryAttitude, quat_to_rot
-from .kinematics import JOINT_NAMES, LEGS, LEG_SIGNS, body_velocity_from_stance, leg_fk
+from .kinematics import JOINT_NAMES, LEGS, body_velocity_from_stance, leg_fk
 
 
 class LegOdometryNode(Node):
@@ -192,8 +192,7 @@ class LegOdometryNode(Node):
         foot_pos: dict[str, np.ndarray] = {}
         foot_vel: dict[str, np.ndarray] = {}
         for leg in LEGS:
-            x_sign, y_sign = LEG_SIGNS[leg]
-            pos, jac = leg_fk(q_by_leg[leg], x_sign, y_sign)
+            pos, jac = leg_fk(q_by_leg[leg], leg)
             foot_pos[leg] = pos
             foot_vel[leg] = jac @ qd_by_leg[leg]
 

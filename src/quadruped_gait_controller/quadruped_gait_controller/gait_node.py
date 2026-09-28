@@ -1,277 +1,232 @@
 #!/usr/bin/env python3
 """
-quadruped_gait_controller — diagonal trot gait node.
+quadruped_gait_controller — Spot Micro gait node.
 
-Architecture:
-  /cmd_vel  (geometry_msgs/Twist)
-       │
-       ▼
-  GaitNode  ── Float64MultiArray ──►  /quadruped_joint_controller/commands
+  /cmd_vel (geometry_msgs/Twist)
+      │  clamp + acceleration limit + watchdog
+      ▼
+  BezierGait  →  footholds in the nominal body frame N
+      │
+      ▼
+  body_ik (quadruped_kinematics)  →  12 joint angles
+      │
+      ▼
+  /quadruped_joint_controller/commands (std_msgs/Float64MultiArray)
 
-Controller in simulation:
-  position_controllers/JointGroupPositionController
-  Topic: /quadruped_joint_controller/commands
-  Type:  std_msgs/Float64MultiArray
-  Joint order (must match ros2_control.yaml):
-    FL_hip_roll, FL_hip_pitch, FL_knee,
-    FR_hip_roll, FR_hip_pitch, FR_knee,
-    RL_hip_roll, RL_hip_pitch, RL_knee,
-    RR_hip_roll, RR_hip_pitch, RR_knee
+Joint order is quadruped_kinematics.JOINT_ORDER, which is the contract with
+quadruped_gazebo/config/ros2_control.yaml:
+    FL hip_roll, hip_pitch, knee, FR …, RL …, RR …
 
-Gait: diagonal trot
-  Phase A [0, 0.5): FL + RR swing, FR + RL stance
-  Phase B [0.5, 1): FR + RL swing, FL + RR stance
+States
+    STANDING_UP  ramp body height from crouch to the commanded stand
+    STANDING     hold the stand pose, gait phase parked at 0
+    WALKING      cycle the gait; on a zero command finish the current cycle
+                 so every foot is back at its neutral foothold, then stand
+
+Every geometric and gait parameter is a ROS parameter (see
+config/gait_params.yaml). The link lengths come from quadruped_kinematics
+and are not parameters: they are the robot.
 """
 
 import math
+from enum import Enum
+
+import numpy as np
 import rclpy
-from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
 
-# ── Robot geometry (metres — must match URDF properties) ────────────────────
-HIP_X_OFFSET = 0.10    # fore-aft distance from body centre to hip
-HIP_Y_OFFSET = 0.065   # lateral distance from body centre to hip
-HIP_LENGTH   = 0.04    # hip abduction link length (along Y)
-L1           = 0.085   # thigh length
-L2           = 0.095   # calf length
+from quadruped_kinematics import SPOT_MICRO, body_ik, neutral_feet
 
-# ── Standing pose (radians, match URDF initial_value) ───────────────────────
-STAND_HIP_ROLL  = 0.0
-STAND_HIP_PITCH = 0.5
-STAND_KNEE      = -1.2
-
-# ── Gait parameters ─────────────────────────────────────────────────────────
-STRIDE_PERIOD   = 0.4    # seconds per full stride
-STEP_HEIGHT     = 0.015  # metres — swing foot lift
-MAX_STEP_LENGTH = 0.08   # metres — maximum stride stroke
-MAX_LATERAL     = 0.04   # metres — maximum lateral stroke
-PUBLISH_RATE_HZ = 50     # Hz — control loop rate
-CMD_TIMEOUT     = 0.5    # seconds — stop if /cmd_vel goes stale (dead publisher)
-
-# ── Leg table ────────────────────────────────────────────────────────────────
-LEGS = ('FL', 'FR', 'RL', 'RR')
-LEG_SIGNS = {
-    'FL': ( 1,  1),   # (x_sign, y_sign)
-    'FR': ( 1, -1),
-    'RL': (-1,  1),
-    'RR': (-1, -1),
-}
-# Diagonal trot pairs
-SWING_A = {'FL', 'RR'}
+from .gait import GAIT_LIBRARY, BezierGait, GaitParams
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Analytic leg IK
-# ─────────────────────────────────────────────────────────────────────────────
-
-def leg_ik(foot_x: float, foot_y: float, foot_z: float,
-           y_sign: int) -> tuple[float, float, float]:
-    """
-    Analytic IK for a 3-DOF leg (hip_roll, hip_pitch, knee).
-
-    Args:
-        foot_x: desired foot position x in body frame (forward +)
-        foot_y: desired foot position y in body frame (left +)
-        foot_z: desired foot position z in body frame (up +, typically negative)
-        y_sign: +1 for left legs, -1 for right legs
-
-    Returns:
-        (hip_roll, hip_pitch, knee) radians
-    """
-    # Hip roll (abduction) — coronal plane
-    dy = foot_y - y_sign * HIP_Y_OFFSET
-    dz = foot_z                             # negative (foot below hip)
-    
-    # Effective leg-chain reach after removing the fixed HIP_LENGTH offset
-    r_coronal = math.sqrt(dy**2 + dz**2)
-    r_chain = math.sqrt(max(r_coronal**2 - HIP_LENGTH**2, 0.0))
-    
-    # hip_roll incorporates the offset created by HIP_LENGTH
-    hip_roll = math.atan2(dy, -dz) - math.atan2(y_sign * HIP_LENGTH, r_chain)
+class State(Enum):
+    STANDING_UP = 'standing_up'
+    STANDING = 'standing'
+    WALKING = 'walking'
 
 
-
-    # Sagittal-plane 2-link IK (thigh=L1, calf=L2)
-    r = math.sqrt(foot_x**2 + r_chain**2)
-    r = min(max(r, 1e-6), L1 + L2 - 1e-4)
-
-    cos_knee = (L1**2 + L2**2 - r**2) / (2.0 * L1 * L2)
-    cos_knee = max(-1.0, min(1.0, cos_knee))
-    knee = -(math.pi - math.acos(cos_knee))   # negative per URDF convention
-
-    # URDF pitch axes are +y, so positive hip_pitch/knee swing the foot
-    # backward (-x): the sagittal angles are solved against -foot_x.
-    alpha = math.atan2(-foot_x, r_chain)
-    cos_gamma = (L1**2 + r**2 - L2**2) / (2.0 * L1 * r)
-    cos_gamma = max(-1.0, min(1.0, cos_gamma))
-    hip_pitch = alpha + math.acos(cos_gamma)
-
-    return hip_roll, hip_pitch, knee
+def _smoothstep(s: float) -> float:
+    s = min(max(s, 0.0), 1.0)
+    return s * s * (3.0 - 2.0 * s)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Gait Node
-# ─────────────────────────────────────────────────────────────────────────────
+def _clamp(value: float, limit: float) -> float:
+    return max(-limit, min(limit, value))
+
 
 class GaitNode(Node):
-    """Diagonal trot gait controller."""
+    """Velocity command → joint positions via a Bézier-swing gait."""
 
     def __init__(self):
         super().__init__('gait_controller')
 
-        self._pub = self.create_publisher(
-            Float64MultiArray,
-            '/quadruped_joint_controller/commands',
-            10,
+        # ── Parameters ──────────────────────────────────────────────────
+        d = self.declare_parameter
+        d('joint_command_topic', '/quadruped_joint_controller/commands')
+        d('cmd_vel_topic', '/cmd_vel')
+        d('control_rate', 100.0)          # Hz
+        d('cmd_vel_timeout', 0.5)         # s; stale command → stop
+        d('max_vx', 0.4)                  # m/s
+        d('max_vy', 0.25)                 # m/s
+        d('max_wz', 1.2)                  # rad/s
+        d('linear_accel', 0.6)            # m/s²
+        d('angular_accel', 2.5)           # rad/s²
+        d('gait_type', 'trot')            # trot | walk
+        # 0 (or negative) keeps the gait's tuned default from GAIT_LIBRARY.
+        d('period', 0.0)                  # s per cycle
+        d('duty', 0.0)                    # stance fraction
+        d('swing_clearance', 0.0)         # m
+        d('body_shift_gain', -1.0)        # 0..1, shift body toward support centroid
+        d('body_shift_tau', 0.0)          # s, low-pass on that shift
+        d('max_step_length', 0.10)        # m
+        d('stance_depth', 0.0)            # m, push below ground while in stance
+        d('body_height', 0.16)            # m, base_link above ground
+        d('body_x', 0.0)                  # m, body shift over the feet
+        d('body_y', 0.0)
+        d('body_roll', 0.0)               # rad
+        d('body_pitch', 0.0)
+        d('body_yaw', 0.0)
+        d('foot_x_offset', 0.0)           # m, shift all footholds fore/aft
+        d('foot_y_offset', 0.0)           # m, widen the stance
+        d('crouch_height', 0.09)          # m, start of the stand-up ramp
+        d('stand_up_duration', 1.0)       # s
+
+        g = lambda name: self.get_parameter(name).value  # noqa: E731
+        self._rate = float(g('control_rate'))
+        self._timeout = float(g('cmd_vel_timeout'))
+        self._max_v = (float(g('max_vx')), float(g('max_vy')), float(g('max_wz')))
+        self._lin_acc = float(g('linear_accel'))
+        self._ang_acc = float(g('angular_accel'))
+        self._height = float(g('body_height'))
+        self._body_xy = (float(g('body_x')), float(g('body_y')))
+        self._rpy = (float(g('body_roll')), float(g('body_pitch')), float(g('body_yaw')))
+        self._foot_x = float(g('foot_x_offset'))
+        self._foot_y = float(g('foot_y_offset'))
+        self._crouch = float(g('crouch_height'))
+        self._stand_up_s = max(float(g('stand_up_duration')), 1e-3)
+
+        gait_type = str(g('gait_type'))
+        if gait_type not in GAIT_LIBRARY:
+            raise ValueError(f'gait_type must be one of {sorted(GAIT_LIBRARY)}, got {gait_type!r}')
+        def override(name):
+            value = float(g(name))
+            return value if value > 0.0 else None
+
+        self._params = GaitParams.from_library(
+            gait_type,
+            period=override('period'),
+            duty=override('duty'),
+            clearance=override('swing_clearance'),
+            body_shift_gain=(float(g('body_shift_gain'))
+                             if float(g('body_shift_gain')) >= 0.0 else None),
+            body_shift_tau=override('body_shift_tau'),
+            max_step_length=float(g('max_step_length')),
+            stance_depth=float(g('stance_depth')),
         )
-        self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, 10)
+        self._shift_gain = self._params.body_shift_gain
+        self._shift_tau = max(self._params.body_shift_tau, 1e-3)
+        self._neutral = neutral_feet(self._height, SPOT_MICRO, self._foot_x, self._foot_y)
+        self._gait = BezierGait(self._params, self._neutral)
 
-        self._cmd_vx = 0.0
-        self._cmd_vy = 0.0
-        self._cmd_omega = 0.0
+        # ── State ───────────────────────────────────────────────────────
+        self._cmd = np.zeros(3)           # latest clamped (vx, vy, wz)
+        self._vel = np.zeros(3)           # acceleration-limited command
         self._last_cmd_time = None
-
-        self._vx = 0.0
-        self._vy = 0.0
-        self._omega = 0.0
-
         self._phase = 0.0
-        dt = 1.0 / PUBLISH_RATE_HZ
-        self._phase_vel = 1.0 / STRIDE_PERIOD
-        self._timer = self.create_timer(dt, self._tick)
+        self._shift = np.zeros(2)         # low-passed body shift in N
+        self._state = State.STANDING_UP
+        self._t0 = self.get_clock().now()
+        self._last_tick = self._t0
 
-        # Pre-compute nominal standing foot position (relative to hip)
-        z_stand = -(L1 * math.cos(STAND_HIP_PITCH) +
-                    L2 * math.cos(STAND_HIP_PITCH + STAND_KNEE))
-        x_stand = -(L1 * math.sin(STAND_HIP_PITCH) +
-                    L2 * math.sin(STAND_HIP_PITCH + STAND_KNEE))
-        self._z_stand = z_stand
-        self._x_stand = x_stand
+        self._pub = self.create_publisher(Float64MultiArray, g('joint_command_topic'), 10)
+        self.create_subscription(Twist, g('cmd_vel_topic'), self._cmd_vel_cb, 10)
+        self._timer = self.create_timer(1.0 / self._rate, self._tick)
 
         self.get_logger().info(
             '\n'
             '============================================\n'
-            '  Quadruped Gait Controller — diagonal trot\n'
+            '  Spot Micro gait controller\n'
             '============================================\n'
-            '  Subscribing: /cmd_vel\n'
-            '  Publishing:  /quadruped_joint_controller/commands\n'
-            '  Rate: %d Hz  |  Stride: %.2f s\n'
-            '============================================\n'
-            % (PUBLISH_RATE_HZ, STRIDE_PERIOD)
+            f'  gait: {gait_type}  period {self._params.period:.2f} s  '
+            f'duty {self._params.duty:.2f}  clearance {self._params.clearance*1e3:.0f} mm  '
+            f'body shift {self._shift_gain:.1f}\n'
+            f'  body height {self._height:.3f} m, step cap {self._params.max_step_length*1e3:.0f} mm\n'
+            f'  cmd_vel: {g("cmd_vel_topic")}  →  {g("joint_command_topic")} @ {self._rate:.0f} Hz\n'
+            '============================================'
         )
 
+    # ── Inputs ──────────────────────────────────────────────────────────
     def _cmd_vel_cb(self, msg: Twist):
-        self._cmd_vx = float(msg.linear.x)
-        self._cmd_vy = float(msg.linear.y)
-        self._cmd_omega = float(msg.angular.z)
+        self._cmd = np.array([
+            _clamp(float(msg.linear.x), self._max_v[0]),
+            _clamp(float(msg.linear.y), self._max_v[1]),
+            _clamp(float(msg.angular.z), self._max_v[2]),
+        ])
         self._last_cmd_time = self.get_clock().now()
 
+    # ── Control loop ────────────────────────────────────────────────────
     def _tick(self):
-        dt = 1.0 / PUBLISH_RATE_HZ
+        now = self.get_clock().now()
+        dt = (now - self._last_tick).nanoseconds * 1e-9
+        self._last_tick = now
+        dt = min(max(dt, 0.0), 0.1)   # sim-time jumps must not fling a foot
 
-        # Watchdog: a quit teleop or crashed planner must not leave the last
-        # command latched forever.
-        if self._last_cmd_time is not None:
-            age = (self.get_clock().now() - self._last_cmd_time).nanoseconds
-            if age > CMD_TIMEOUT * 1e9:
-                self._cmd_vx = 0.0
-                self._cmd_vy = 0.0
-                self._cmd_omega = 0.0
+        if self._state is State.STANDING_UP:
+            elapsed = (now - self._t0).nanoseconds * 1e-9
+            s = _smoothstep(elapsed / self._stand_up_s)
+            height = self._crouch + (self._height - self._crouch) * s
+            self._publish(neutral_feet(height, SPOT_MICRO, self._foot_x, self._foot_y))
+            if s >= 1.0:
+                self._state = State.STANDING
+            return
 
-        # Smooth velocity with acceleration limits
-        dvx = self._cmd_vx - self._vx
-        dvy = self._cmd_vy - self._vy
-        domega = self._cmd_omega - self._omega
+        # Watchdog: a dead teleop or planner must not latch the last command.
+        if self._last_cmd_time is not None and \
+                (now - self._last_cmd_time).nanoseconds * 1e-9 > self._timeout:
+            self._cmd = np.zeros(3)
 
-        accel_x = 0.8  # m/s^2
-        accel_y = 0.8  # m/s^2
-        accel_w = 2.0  # rad/s^2
+        self._ramp_velocity(dt)
+        moving = bool(np.any(np.abs(self._vel) > 1e-3))
 
-        self._vx += max(-accel_x * dt, min(accel_x * dt, dvx))
-        self._vy += max(-accel_y * dt, min(accel_y * dt, dvy))
-        self._omega += max(-accel_w * dt, min(accel_w * dt, domega))
-
-        moving = abs(self._vx) > 0.001 or abs(self._vy) > 0.001 or abs(self._omega) > 0.001
-
-        if abs(self._cmd_vx) < 0.001 and abs(self._cmd_vy) < 0.001 and abs(self._cmd_omega) < 0.001:
+        if self._state is State.STANDING:
             if not moving:
-                self._phase = 0.0
-                self._publish_stand()
+                self._settle_shift(np.zeros(2), dt)
+                self._publish(self._neutral)
                 return
+            self._state = State.WALKING
+            self._phase = 0.0
 
-        self._phase = (self._phase + self._phase_vel * dt) % 1.0
+        # WALKING
+        step = dt / self._params.period
+        if not moving and self._phase + step >= 1.0:
+            # Cycle complete with zero velocity: all feet at neutral, so the
+            # transition to a static stand is seamless.
+            self._phase = 0.0
+            self._state = State.STANDING
+            self._settle_shift(np.zeros(2), dt)
+            self._publish(self._neutral)
+            return
+        self._phase = (self._phase + step) % 1.0
+        self._settle_shift(self._shift_gain * self._gait.support_centroid(self._phase), dt)
+        self._publish(self._gait.feet(self._phase, *self._vel))
 
-        self._publish_trot()
+    def _settle_shift(self, target: np.ndarray, dt: float):
+        alpha = min(dt / self._shift_tau, 1.0)
+        self._shift = self._shift + alpha * (target - self._shift)
 
-    def _compute_angles(self) -> list[float]:
-        """Return flat list of 12 joint angles in LEGS order."""
-        angles: list[float] = []
-        for prefix in LEGS:
-            x_sign, y_sign = LEG_SIGNS[prefix]
+    def _ramp_velocity(self, dt: float):
+        limits = np.array([self._lin_acc, self._lin_acc, self._ang_acc]) * dt
+        delta = self._cmd - self._vel
+        self._vel = self._vel + np.clip(delta, -limits, limits)
 
-            # True position of the foot relative to body center
-            body_x = x_sign * HIP_X_OFFSET + self._x_stand
-            body_y = y_sign * (HIP_Y_OFFSET + HIP_LENGTH)
-            
-            # Linear velocity required at the foot
-            v_x = self._vx - body_y * self._omega
-            v_y = self._vy + body_x * self._omega
-            
-            # Required stroke (amplitude)
-            leg_step_x = v_x * (STRIDE_PERIOD / 2.0)
-            leg_step_y = v_y * (STRIDE_PERIOD / 2.0)
-            
-            # Cap the stroke to avoid IK failure
-            leg_step_x = max(-MAX_STEP_LENGTH, min(MAX_STEP_LENGTH, leg_step_x))
-            leg_step_y = max(-MAX_LATERAL, min(MAX_LATERAL, leg_step_y))
-
-            # Local phase: A-pair starts at 0, B-pair offset by 0.5
-            if prefix in SWING_A:
-                leg_phase = self._phase
-            else:
-                leg_phase = (self._phase + 0.5) % 1.0
-
-            in_swing = leg_phase < 0.5
-
-            if in_swing:
-                t = leg_phase / 0.5          # 0→1
-                foot_x_off = leg_step_x * (t - 0.5)
-                foot_y_off = leg_step_y * (t - 0.5)
-                lift       = STEP_HEIGHT * math.sin(math.pi * t)
-            else:
-                t = (leg_phase - 0.5) / 0.5  # 0→1
-                foot_x_off = leg_step_x * (0.5 - t)
-                foot_y_off = leg_step_y * (0.5 - t)
-                lift       = 0.0
-
-            # Nominal foot position relative to hip in X, and relative to body center in Y/Z 
-            nom_x = self._x_stand
-            nom_y = y_sign * (HIP_Y_OFFSET + HIP_LENGTH)
-            nom_z = self._z_stand
-
-            hr, hp, kn = leg_ik(
-                nom_x + foot_x_off,
-                nom_y + foot_y_off,
-                nom_z  + lift,
-                y_sign,
-            )
-            angles += [hr, hp, kn]
-        return angles
-
-    def _publish_trot(self):
+    def _publish(self, feet: dict):
+        position = (self._body_xy[0] + self._shift[0], self._body_xy[1] + self._shift[1], 0.0)
+        q = body_ik(feet, position, self._rpy, SPOT_MICRO)
         msg = Float64MultiArray()
-        msg.data = self._compute_angles()
-        self._pub.publish(msg)
-
-    def _publish_stand(self):
-        msg = Float64MultiArray()
-        msg.data = [
-            STAND_HIP_ROLL, STAND_HIP_PITCH, STAND_KNEE,  # FL
-            STAND_HIP_ROLL, STAND_HIP_PITCH, STAND_KNEE,  # FR
-            STAND_HIP_ROLL, STAND_HIP_PITCH, STAND_KNEE,  # RL
-            STAND_HIP_ROLL, STAND_HIP_PITCH, STAND_KNEE,  # RR
-        ]
+        msg.data = [float(v) for v in q]
         self._pub.publish(msg)
 
 

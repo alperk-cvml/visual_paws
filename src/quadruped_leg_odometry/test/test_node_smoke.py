@@ -15,11 +15,12 @@ rclpy = pytest.importorskip('rclpy')
 from nav_msgs.msg import Odometry            # noqa: E402
 from sensor_msgs.msg import Imu, JointState  # noqa: E402
 
+from quadruped_kinematics import stand_joint_angles                # noqa: E402
 from quadruped_leg_odometry.imu_attitude import GRAVITY          # noqa: E402
 from quadruped_leg_odometry.kinematics import JOINT_NAMES, LEGS  # noqa: E402
 from quadruped_leg_odometry.leg_odometry_node import LegOdometryNode  # noqa: E402
 
-STAND = (0.0, 0.5, -1.2)
+STAND_ALL = stand_joint_angles(0.17)
 
 
 def test_node_publishes_odom_lko():
@@ -50,9 +51,9 @@ def test_node_publishes_odom_lko():
 
             js = JointState()
             js.header.stamp = stamp
-            for leg in LEGS:
+            for i, leg in enumerate(LEGS):
                 js.name.extend(JOINT_NAMES[leg])
-                js.position.extend(STAND)
+                js.position.extend(STAND_ALL[3 * i:3 * i + 3].tolist())
                 js.velocity.extend([0.0, 0.0, 0.0])
             joint_pub.publish(js)
 

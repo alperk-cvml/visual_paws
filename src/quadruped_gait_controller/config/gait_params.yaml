@@ -1,0 +1,40 @@
+# Spot Micro gait controller parameters.
+# Link lengths are not here: they live in quadruped_kinematics (and the URDF).
+gait_controller:
+  ros__parameters:
+    joint_command_topic: /quadruped_joint_controller/commands
+    cmd_vel_topic: /cmd_vel
+    control_rate: 100.0        # Hz
+    cmd_vel_timeout: 0.5       # s without /cmd_vel before stopping
+
+    # Command clamps and ramps
+    max_vx: 0.4                # m/s
+    max_vy: 0.25               # m/s
+    max_wz: 1.2                # rad/s
+    linear_accel: 0.6          # m/s^2
+    angular_accel: 2.5         # rad/s^2
+
+    # Gait. Each gait_type carries tuned defaults (see gait.py GAIT_LIBRARY);
+    # a zero here keeps that default, a positive value overrides it.
+    gait_type: trot            # trot (0.4 s, duty 0.7) | walk (1.0 s crawl, duty 0.75, body shift)
+    period: 0.0                # s per full cycle
+    duty: 0.0                  # stance fraction of the cycle
+    swing_clearance: 0.0       # m foot lift
+    body_shift_gain: -1.0      # 0..1 of the way into the support polygon (negative = default)
+    body_shift_tau: 0.0        # s low-pass on the body shift
+    max_step_length: 0.10      # m foot travel per cycle (caps speed)
+    stance_depth: 0.0          # m push below ground while in stance (0 = off; 6 mm made the trot fall)
+
+    # Body pose relative to the footholds
+    body_height: 0.16          # m, base_link above ground (URDF stand_height)
+    body_x: 0.0                # m, shift the body over the feet
+    body_y: 0.0
+    body_roll: 0.0             # rad
+    body_pitch: 0.0
+    body_yaw: 0.0
+    foot_x_offset: 0.0         # m, shift all footholds fore/aft
+    foot_y_offset: 0.0         # m, widen the stance beyond the hip links
+
+    # Start-up
+    crouch_height: 0.09        # m, where the stand-up ramp begins
+    stand_up_duration: 1.0     # s

@@ -8,7 +8,9 @@ Leg-kinematics + IMU odometry (**LKO**). One module, two sub-components:
   correction) for real ICM-42688-class hardware that outputs only rates and
   specific force. Yaw is gyro-only in that mode and drifts.
 - **Leg odometry** (`kinematics.py` + `leg_odometry_node.py`) — forward
-  kinematics and geometric Jacobians for all four legs from `/joint_states`.
+  kinematics and geometric Jacobians for all four legs from `/joint_states`,
+  using the shared `quadruped_kinematics` package (Spot Micro geometry, the
+  same source the gait controller and the URDF consistency test use).
   Stance feet are detected kinematically (feet within a height band of the
   lowest foot, measured along gravity). Each stance foot is stationary in the
   world, so `v_base = -(ω × p_foot + J q̇)`; the estimates are averaged and

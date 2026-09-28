@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>quadruped_gait_controller</name>
-  <version>0.0.1</version>
-  <description>Diagonal trot gait controller for the quadruped robot — subscribes to /cmd_vel and drives ros2_control via JointTrajectory</description>
+  <version>0.2.0</version>
+  <description>Spot Micro gait controller: /cmd_vel → Bézier-swing trot/walk → whole-body IK → joint position commands</description>
 
-  <maintainer email="you@yourdomain.com">you</maintainer>
+  <maintainer email="kucukkomurler.alper@gmail.com">Alper Kucukkomurler</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
@@ -12,6 +12,10 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>quadruped_kinematics</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

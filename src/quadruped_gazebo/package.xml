@@ -2,7 +2,7 @@
 <package format="3">
   <name>quadruped_gazebo</name>
   <version>0.0.1</version>
-  <description>MechDog Gazebo bringup (minimal skeleton)</description>
+  <description>Spot Micro quadruped Gazebo Harmonic bringup: URDF, worlds, ros2_control, ground-truth odometry</description>
 
   <maintainer email="you@yourdomain.com">you</maintainer>
   <license>Apache-2.0</license>

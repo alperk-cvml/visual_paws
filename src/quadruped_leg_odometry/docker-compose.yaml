@@ -41,7 +41,7 @@ services:
       - |
         set -e
         source /opt/ros/$${ROS_DISTRO}/setup.bash
-        colcon build --symlink-install --packages-select quadruped_leg_odometry
+        colcon build --symlink-install --packages-up-to quadruped_leg_odometry
         source /work/ws/install/setup.bash
         ros2 launch quadruped_leg_odometry leg_odometry.launch.py \
           use_sim_time:=$${USE_SIM_TIME} \

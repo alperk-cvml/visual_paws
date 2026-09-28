@@ -15,7 +15,12 @@ class GazeboGroundTruthOdometry(Node):
     def __init__(self) -> None:
         super().__init__('gazebo_ground_truth_odometry')
         self.declare_parameter('input_topic', '/gazebo/model_pose')
-        self.declare_parameter('source_child_frame', 'quadruped/base_link')
+        # The pose publisher emits the *model* pose in the world frame under
+        # the model name, and every link pose *relative to the model* under
+        # '<model>/<link>'. base_link is the canonical link at the model
+        # origin, so the model pose is base_link's world pose; the link entry
+        # is identity forever and must not be used.
+        self.declare_parameter('source_child_frame', 'quadruped')
         self.declare_parameter('odom_topic', '/odom_ground_truth')
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_link')
@@ -42,7 +47,6 @@ class GazeboGroundTruthOdometry(Node):
             (
                 transform for transform in msg.transforms
                 if transform.child_frame_id == self.source_child_frame
-                or transform.child_frame_id.endswith('/base_link')
             ),
             None,
         )
