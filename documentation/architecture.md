@@ -31,7 +31,7 @@ All containers share:
 | Container | Base Image | Role |
 |---|---|---|
 | `quadruped_gazebo` | `osrf/ros:jazzy-desktop-full` | Physics simulation, robot model, sensor data |
-| `quadruped_gait_controller` | `osrf/ros:jazzy-desktop-full` | Inverse kinematics + diagonal trot gait |
+| `quadruped_gait_controller` | `osrf/ros:jazzy-desktop-full` | Spot Micro Bézier-swing gait (trot / crawl) + whole-body IK |
 | `quadruped_test_controller` | `osrf/ros:jazzy-desktop-full` | Keyboard teleoperation |
 | `depth_image_proc` | `osrf/ros:jazzy-desktop-full` | Depth image → point cloud conversion |
 | `elevation_mapping_cupy` | `nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04` | GPU-accelerated 2.5D elevation mapping |
@@ -63,23 +63,30 @@ src/
 
 ## Robot Model
 
-The robot is defined in `src/quadruped_gazebo/urdf/quadruped.urdf.xacro`.
+The robot is a **Spot Micro** (open-source KDY0532 / mike4192 geometry), defined in
+`src/quadruped_gazebo/urdf/quadruped.urdf.xacro`.
 
-- **Body**: 0.25 m × 0.12 m, 1.2 kg
-- **Legs**: 4 legs × 3 joints = 12 DOF total
+- **Body**: 0.20 m × 0.09 m × 0.06 m chassis plus head and tail, 1.3 kg; 2.82 kg total
+- **Hip pivots**: 0.186 m apart fore/aft, 0.078 m apart left/right
+- **Legs**: 4 legs × 3 joints = 12 DOF total; all four knees point backward (Spot configuration)
+- **Servos**: 3.4 N·m stall, 7 rad/s (35 kg·cm hobby-servo class), tracked in Gazebo by
+  `gz_ros2_control`'s velocity loop (`position_proportional_gain` in `config/ros2_control.yaml`)
 
 ### Joint Layout (per leg)
 
 ```
 body
- └── hip_roll    (frontal plane abduction/adduction)
-      └── hip_pitch  (sagittal plane flexion)
-           └── knee      (sagittal plane flexion)
-                └── foot
+ └── hip_roll    (abduction, about x; carries the 55 mm hip link outboard)
+      └── hip_pitch  (about y; 107.5 mm upper leg)
+           └── knee      (about y, always negative; 130 mm lower leg)
+                └── foot  (15 mm rubber ball, fixed)
 ```
 
-**Leg link lengths**: thigh 85 mm · calf 95 mm  
-**Leg segment masses**: ~0.08–0.10 kg each
+The same link lengths live in python in `src/quadruped_kinematics/` (`SPOT_MICRO`), the
+package shared by the gait controller and leg odometry; a unit test there parses the xacro
+and fails if the two diverge. The URDF derives its stand pose (`initial_value`) from the
+geometry, so the robot spawns standing at `stand_height` and the gait controller's
+`body_height` defaults to the same number.
 
 ### Sensors
 
@@ -146,39 +153,31 @@ body
 
 ## Gait Controller
 
-**File**: `src/quadruped_gait_controller/quadruped_gait_controller/gait_node.py`
+**Package**: `src/quadruped_gait_controller/` (`gait.py` pure python, `gait_node.py` ROS node)
 
-The controller implements a **diagonal trot gait** with analytic 3-DOF inverse kinematics.
+Spot Micro Bézier-swing gait with whole-body inverse kinematics from `quadruped_kinematics`.
 
-### Gait Parameters
+### Gaits (tuned defaults)
 
-| Parameter | Value |
-|---|---|
-| Stride period | 0.4 s |
-| Step height | 15 mm |
-| Max step distance | 80 mm |
-| Control loop rate | 50 Hz |
+| `gait_type` | Cycle | Duty | Notes |
+|---|---|---|---|
+| `trot` (default) | 0.4 s | 0.70 | FL+RR / FR+RL pairs, 20 mm lift, four-foot support between 0.12 s swings |
+| `walk` | 1.0 s | 0.75 | One foot in the air at a time (RL, FL, RR, FR); body shifted into the support triangle |
 
-### Gait Phases
+### Foot trajectories
 
-```
-Phase A (cycle 0.0 – 0.5):  FL + RR in swing,  FR + RL in stance
-Phase B (cycle 0.5 – 1.0):  FR + RL in swing,  FL + RR in stance
-```
+- Stance: linear sweep from +Δ/2 to −Δ/2, Δ = body ground displacement over one
+  stance period at the commanded velocity evaluated at that foot (`v + ω × r`).
+- Swing: 11th-order Bézier (Hyun et al. 2014) from −Δ/2 to +Δ/2, tangent to the
+  ground at both ends. The segments meet, so foot position is continuous.
+- Whole-body IK: feet are planned in the nominal body frame; the body may be
+  posed (height, roll, pitch, yaw, shift) relative to them.
 
-### Inverse Kinematics
+### Velocity handling
 
-Each leg uses analytic 2-link IK in the sagittal plane plus hip roll for lateral positioning:
-
-1. **Hip roll** — computed from lateral (y) offset of foot target
-2. **Hip pitch + knee** — 2-link planar IK (thigh + calf) for (x, z) foot target
-
-### Velocity Handling
-
-- Subscribes to `/cmd_vel` (`geometry_msgs/Twist`)
-- Applies acceleration ramp limits for smooth velocity transitions
-- Accounts for body angular velocity when computing per-leg foot targets
-- Output: `/quadruped_joint_controller/commands` (`std_msgs/Float64MultiArray`, 12 values)
+- Subscribes to `/cmd_vel` (`geometry_msgs/Twist`), clamps, ramps, and stops on a stale command
+- A zero command finishes the current cycle so all feet return to neutral, then holds the stand
+- Output: `/quadruped_joint_controller/commands` (`std_msgs/Float64MultiArray`, 12 values, 100 Hz)
 
 ---
 

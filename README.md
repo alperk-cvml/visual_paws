@@ -1,6 +1,6 @@
 # Visual Paws
 
-Modular ROS 2 quadruped autonomous navigation stack using **camera-only perception**. Targets real outdoor deployment on a 12-DOF quadruped via monocular depth estimation (Depth Anything V2), visual SLAM (ORB-SLAM3), GPU elevation mapping, and traversability-aware planning.
+Modular ROS 2 quadruped autonomous navigation stack using **camera-only perception**. Targets real outdoor deployment on a 12-DOF quadruped via monocular depth estimation (Metric3D V2), visual SLAM (ORB-SLAM3), GPU elevation mapping, and traversability-aware planning.
 
 Built on ROS 2 Jazzy · Gazebo Harmonic · CycloneDDS · Docker · NVIDIA CUDA.
 
@@ -37,7 +37,7 @@ docker compose --env-file offline-video.env up -d --build
 
 The `offline-video.env` profile configures:
 - `video_camera_sim` to play a recorded video file as `/camera/image_raw`
-- `monocular_depth` to infer metric depth via Depth Anything V2
+- `monocular_depth` to infer metric depth via Metric3D V2
 - `localization` in `offline_video` mode (ORB-SLAM3 owns `map→base_link` directly)
 - `elevation_mapping_cupy` to accumulate point clouds into a GPU elevation map
 
@@ -73,6 +73,11 @@ Drive the robot to vary the viewpoint with `tmux attach -t quadruped_test_contro
 See [`src/depth_comparison/README.md`](src/depth_comparison/README.md) for the
 backend interface, measured throughput, and how to add a model.
 
+Metric3D V2 came out ahead on scale in this comparison and is now what the
+`monocular_depth` container runs in the pipeline. The comparison harness stays
+in place for the next candidate model — and the scale problem is not closed:
+see `src/ground_plane_estimation` for the kinetic scale probe.
+
 ### 3. Monitor & Interact (tmux)
 
 Once the containers are running, use the provided `tmux-attach.sh` script to open a distinct tmux session for each module.
@@ -99,14 +104,14 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture pipeline, TF tree, topic fl
 |---|---|
 | `quadruped_gazebo` | Physics sim, robot spawn, sensor publishing |
 | `video_camera_sim` | Plays recorded video as camera topics (offline pipeline) |
-| `monocular_depth` | Depth Anything V2 → metric depth from RGB |
+| `monocular_depth` | Metric3D V2 → metric depth from RGB + intrinsics |
 | `depth_comparison` | N depth models on identical frames → one depth + cloud each |
 | `depth_image_proc` | Depth image → PointCloud2 conversion |
 | `localization` | ORB-SLAM3 + EKF sensor fusion |
 | `elevation_mapping_cupy` | GPU elevation mapping from point clouds |
 | `rviz` | Standalone RViz2 visualization |
 | `nav2_mppi_navigation` | Nav2 + MPPI path planning |
-| `quadruped_gait_controller` | Diagonal trot gait with analytic IK |
+| `quadruped_gait_controller` | Spot Micro Bézier-swing gait (trot / crawl) with whole-body IK |
 | `quadruped_test_controller` | Keyboard teleop |
 
 ## Development
