@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  odometry_scale_estimation:
+    image: odometry-scale-estimation:jazzy
+    container_name: odometry_scale_estimation
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      # Metric-truth odometry (leg kinematics + IMU), shared by every
+      # estimator instance.
+      - ODOM_SCALE_REFERENCE_TOPIC=${ODOM_SCALE_REFERENCE_TOPIC:-/odom_lko}
+      # Comma-separated scale-bearing odometry topics; one node per topic.
+      # For the depth probe, point lidar_odometry at the monodepth cloud
+      # (LIDAR_POINTCLOUD_TOPIC=/depth/points) and compare its /odom_lidar.
+      - ODOM_SCALE_ESTIMATE_TOPICS=${ODOM_SCALE_ESTIMATE_TOPICS:-/odom_lidar}
+      - ODOM_SCALE_NAMESPACE=${ODOM_SCALE_NAMESPACE:-/odom_scale}
+      # Fit model: scalar (chord_est = s·chord_ref) or affine (… + b).
+      - ODOM_SCALE_MODEL=${ODOM_SCALE_MODEL:-scalar}
+      - ODOM_SCALE_WINDOW=${ODOM_SCALE_WINDOW:-5.0}
+      # Minimum reference motion (m) in the window before fitting.
+      - ODOM_SCALE_MIN_MOTION=${ODOM_SCALE_MIN_MOTION:-0.1}
+      - ODOM_SCALE_PUBLISH_RATE=${ODOM_SCALE_PUBLISH_RATE:-2.0}
+      # Constant stamp lag of the estimate stream (s).
+      - ODOM_SCALE_TIME_OFFSET=${ODOM_SCALE_TIME_OFFSET:-0.0}
+      - ODOM_SCALE_MARKER_FRAME=${ODOM_SCALE_MARKER_FRAME:-odom}
+      - ODOM_SCALE_BASE_FRAME=${ODOM_SCALE_BASE_FRAME:-base_link}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    # List form on purpose — see src/depth_comparison/docker-compose.yaml for
+    # why a single-string command would split the launch arguments onto their
+    # own lines and run `ros2 launch` bare.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-select odometry_scale_estimation
+        source /work/ws/install/setup.bash
+        ros2 launch odometry_scale_estimation odom_scale.launch.py \
+          reference_topic:=$${ODOM_SCALE_REFERENCE_TOPIC} \
+          estimate_topics:=$${ODOM_SCALE_ESTIMATE_TOPICS} \
+          output_namespace:=$${ODOM_SCALE_NAMESPACE} \
+          model:=$${ODOM_SCALE_MODEL} \
+          window_duration:=$${ODOM_SCALE_WINDOW} \
+          min_motion:=$${ODOM_SCALE_MIN_MOTION} \
+          publish_rate:=$${ODOM_SCALE_PUBLISH_RATE} \
+          time_offset:=$${ODOM_SCALE_TIME_OFFSET} \
+          marker_frame:=$${ODOM_SCALE_MARKER_FRAME} \
+          base_frame:=$${ODOM_SCALE_BASE_FRAME} \
+          use_sim_time:=$${USE_SIM_TIME}

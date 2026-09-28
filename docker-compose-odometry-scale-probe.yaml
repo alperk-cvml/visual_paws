@@ -1,0 +1,86 @@
+# Odometry scale probe — Alternative 2 from the Current Target ("use IMU and
+# leg odometry to estimate the motion and compare it to the motion inferred
+# with the monodepth pointcloud"), run on Gazebo against the production
+# monocular_depth node.
+#
+# Usage:
+#   xhost +local:docker                      # once per login, for the GUIs
+#   docker compose --env-file odometry-scale-probe.env \
+#     -f docker-compose-odometry-scale-probe.yaml up -d --build
+#
+# Drive the robot — the probe needs MOTION and publishes nothing without it:
+#   tmux attach -t quadruped_test_controller   # W/A/S/D, Q/E rotate, ESC quit
+#
+# Watch the result:
+#   ros2 topic echo /odom_scale/odom_lidar/scale
+#   rqt_plot /odom_scale/odom_lidar/scale/data \
+#            /odom_scale/odom_ground_truth/scale/data \
+#            /odom_scale/odom_lidar/residual/data \
+#            /odom_scale/odom_lidar/ref_motion/data
+#
+# ── Pipeline ────────────────────────────────────────────────────────────
+#
+#   quadruped_gazebo (ground-truth localisation, deterministic V0 benchmark)
+#     -> monocular_depth      Metric3D V2 on /front_camera/image_raw
+#     -> depth_image_proc     depth image -> /depth/points
+#     -> lidar_odometry       KISS-ICP on that cloud -> /odom_lidar
+#     -> odometry_scale_estimation   /odom_lidar vs /odom_lko -> scale
+#     -> pointcloud_scale_correction /depth/points -> /depth/points_corrected
+#
+#   quadruped_leg_odometry     /joint_states + /imu/data -> /odom_lko
+#   quadruped_gait_controller  /cmd_vel -> joint commands
+#   quadruped_test_controller  keyboard -> /cmd_vel
+#   rviz                       visual comparison
+#
+# Two services are additions beyond the module list this profile was asked
+# for, and neither is optional:
+#
+#   * depth_image_proc — monocular_depth publishes a depth IMAGE and KISS-ICP
+#     consumes a PointCloud2, so something has to bridge them. Same pattern
+#     as docker-compose-depth-scale-probe.yaml and CLAUDE.md's main pipeline.
+#   * quadruped_leg_odometry — the probe's metric REFERENCE. The gait
+#     controller publishes joint commands only; /odom_lko comes from this
+#     node. Without it the probe has nothing to compare against and stays
+#     silent. (CLAUDE.md's Key Source Files entry still credits the gait
+#     controller with publishing /odom_lko — that is stale.)
+#
+# ── What to expect ──────────────────────────────────────────────────────
+#
+# Metric3D runs ~1.2-1.5 s/frame on an RTX 2060, so /depth/points arrives at
+# roughly 0.75 Hz and KISS-ICP has to register scans that far apart. DRIVE
+# SLOWLY: consecutive clouds need enough overlap for ICP to converge, and a
+# lost track shows up as a silent or wildly jumping scale. `ref_motion` on
+# each channel tells you whether the window had enough excitation to mean
+# anything — a flat scale with ref_motion near zero reads "standing", not
+# "healthy".
+#
+# The /odom_scale/odom_ground_truth channel compares Gazebo's true motion
+# against the same /odom_lko reference, so it should sit at 1.0. Its
+# deviation IS the reference's own error, i.e. the noise floor below which
+# the /odom_scale/odom_lidar number cannot be trusted. Read the two together.
+#
+# Start a subset (skip the GUI and teleop) with:
+#   docker compose --env-file odometry-scale-probe.env \
+#     -f docker-compose-odometry-scale-probe.yaml up \
+#     quadruped_gazebo monocular_depth depth_image_proc \
+#     quadruped_leg_odometry lidar_odometry odometry_scale_estimation
+
+include:
+  - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/monocular_depth/docker-compose.yaml
+  - path: src/dept_image_proc/docker-compose.yaml
+  # The metric reference: /joint_states + /imu/data -> /odom_lko.
+  - path: src/quadruped_leg_odometry/docker-compose.yaml
+  # The scale-bearing estimate: KISS-ICP on the monocular cloud -> /odom_lidar.
+  - path: src/lidar_odometry/docker-compose.yaml
+  # The probe itself: /odom_lidar vs /odom_lko -> /odom_scale/<key>/scale.
+  - path: src/odometry_scale_estimation/docker-compose.yaml
+  # Closes the loop: applies the motion-derived scale back onto /depth/points,
+  # republishing /depth/points_corrected for side-by-side RViz comparison.
+  - path: src/pointcloud_scale_correction/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
+  # Teleop chain: keyboard -> /cmd_vel -> joint commands. Optional in the
+  # sense that nothing breaks without it — but the probe needs motion, so
+  # without teleop nothing is ever published.
+  - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_test_controller/docker-compose.yaml

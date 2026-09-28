@@ -15,6 +15,8 @@ include:
   - path: src/quadruped_gait_controller/docker-compose.yaml
   - path: src/quadruped_leg_odometry/docker-compose.yaml
   - path: src/ground_plane_estimation/docker-compose.yaml
+  - path: src/pointcloud_scale_correction/docker-compose.yaml
+  - path: src/odometry_scale_estimation/docker-compose.yaml
   - path: src/quadruped_test_controller/docker-compose.yaml
   - path: src/nav2_mppi_navigation/docker-compose.yaml
   - path: src/monocular_depth/docker-compose.yaml

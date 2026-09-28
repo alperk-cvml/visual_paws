@@ -25,6 +25,8 @@ CONTAINERS=(
   quadruped_gait_controller
   quadruped_leg_odometry
   ground_plane_estimation
+  pointcloud_scale_correction
+  odometry_scale_estimation
   quadruped_test_controller
   video_camera_sim
 )

@@ -19,8 +19,9 @@ This module (`src/ground_plane_estimation/`) is that measurement device. It is
 the first of two planned "solve depth kinetically" probes:
 
 - **Alternative 1 (this module):** ground-plane distance vs. known camera height.
-- **Alternative 2 (future):** compare IMU + leg-odometry motion estimate
-  against the motion implied by the monocular point cloud over time.
+- **Alternative 2 (`odometry_scale_estimation`):** compare the IMU +
+  leg-odometry motion estimate against the motion implied by the monocular
+  point cloud over time — see `documentation/odometry_scale_estimation.md`.
 
 ---
 
