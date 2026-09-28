@@ -1,0 +1,25 @@
+# Applies only to builds whose context is the repository root — currently the
+# two inference images (monocular_depth, depth_comparison), which need the
+# shared compat/mmcv shim and therefore cannot use their own directory as the
+# context. Every other module builds from src/<module>/ and never reads this.
+#
+# Those builds COPY nothing but compat/, so the exclusions below are about
+# keeping the context transfer small: videos/ alone is a few hundred MB.
+
+.git
+.pytest_cache
+
+# Colcon output and recorded input
+build/
+install/
+log/
+ws/
+videos/
+
+# Scratch and history directories
+*_history_*/
+
+# Leading **/ is required: a bare `__pycache__/` would only match one at the
+# context root, and the shim's own cache sits a directory down.
+**/__pycache__
+**/*.pyc

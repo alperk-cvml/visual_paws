@@ -1,9 +1,21 @@
 """
-Depth Anything V2 — metric monocular depth estimation node for ROS 2.
+Metric3D V2 — metric monocular depth estimation node for ROS 2.
 
 Subscribes to an RGB image topic and publishes a metric depth image (32FC1,
-values in metres) using the Depth Anything V2 model with outdoor (Virtual
-KITTI) weights.
+values in metres).
+
+Metric3D V2 is **intrinsics-conditioned**: it predicts depth in a canonical
+camera space with a fixed 1000 px focal length, and metric scale is recovered
+afterwards from the real camera's focal length. That is why it replaced Depth
+Anything V2 here — DA-V2's metric heads end in ``sigmoid(x) * max_depth``, so
+their scale is inherited from a training domain and drifts badly off it, while
+Metric3D takes its scale from the camera that actually took the picture. The
+side-by-side evidence lives in ``src/depth_comparison`` (Phase 1 comparison of
+DA-V2 VKITTI, DA-V2 Hypersim and Metric3D V2 on identical Gazebo frames).
+
+Because scale comes from the camera, **this node cannot run without
+CameraInfo**. Frames that arrive before the first CameraInfo are dropped with a
+throttled warning rather than published at an arbitrary scale.
 
 Published depth is consumed by:
   - depth_image_proc  → PointCloud2
@@ -22,33 +34,45 @@ from cv_bridge import CvBridge
 
 import torch
 
+#: Input resolution the ViT variants are trained at, as (height, width).
+_CANONICAL_INPUT_SIZE = (616, 1064)
+
+#: Focal length of the canonical camera Metric3D predicts in, in pixels.
+_CANONICAL_FOCAL = 1000.0
+
+#: ImageNet statistics in RGB order, as used upstream. The padding value is the
+#: channel mean, so padded borders normalise to zero.
+_MEAN = np.array([123.675, 116.28, 103.53], dtype=np.float32)
+_STD = np.array([58.395, 57.12, 57.375], dtype=np.float32)
+
 
 class DepthNode(Node):
-    """ROS 2 node that runs Depth Anything V2 metric inference on RGB images."""
+    """ROS 2 node that runs Metric3D V2 metric inference on RGB images."""
 
     def __init__(self):
         super().__init__('depth_node')
 
         # ── Declare parameters ────────────────────────────────────────────
-        self.declare_parameter('model_type', 'vits')        # vits | vitb | vitl
-        self.declare_parameter('encoder', 'vits')           # alias kept for compat
-        self.declare_parameter('max_depth', 80.0)           # outdoor (vkitti)
+        self.declare_parameter('model_name', 'metric3d_vit_small')  # _vit_small | _vit_large | _vit_giant2
+        self.declare_parameter('repo', 'yvanyin/metric3d')
+        self.declare_parameter('max_depth', 300.0)          # clamp on the de-canonicalised output
         self.declare_parameter('input_image_topic', '/front_camera/image_raw')
+        self.declare_parameter('input_camera_info_topic', '')  # empty = alongside the image topic
         self.declare_parameter('output_depth_topic', '/depth/image_raw')
         self.declare_parameter('output_camera_info_topic', '/depth/camera_info')
         self.declare_parameter('device', 'cuda')            # cuda | cpu
         self.declare_parameter('target_fps', 10.0)          # rate-limit inference
-        self.declare_parameter('model_path', '')             # empty = auto-resolve
 
         # ── Read parameters ───────────────────────────────────────────────
-        self.model_type = self.get_parameter('model_type').value
+        self.model_name = self.get_parameter('model_name').value
+        self.repo = self.get_parameter('repo').value
         self.max_depth = self.get_parameter('max_depth').value
         input_topic = self.get_parameter('input_image_topic').value
+        camera_info_in = self.get_parameter('input_camera_info_topic').value
         output_topic = self.get_parameter('output_depth_topic').value
         camera_info_topic = self.get_parameter('output_camera_info_topic').value
         device_str = self.get_parameter('device').value
         self.target_fps = self.get_parameter('target_fps').value
-        model_path = self.get_parameter('model_path').value
 
         # ── Device setup ──────────────────────────────────────────────────
         if device_str == 'cuda' and not torch.cuda.is_available():
@@ -58,10 +82,11 @@ class DepthNode(Node):
         self.get_logger().info(f'Using device: {self.device}')
 
         # ── Load model ────────────────────────────────────────────────────
-        self.model = self._load_model(model_path)
+        self.model = self._load_model()
         self.get_logger().info(
-            f'Depth Anything V2 loaded  |  encoder={self.model_type}  '
-            f'max_depth={self.max_depth}m  device={self.device}'
+            f'Metric3D V2 loaded  |  model={self.model_name}  '
+            f'max_depth={self.max_depth}m  device={self.device}  '
+            f'(intrinsics-conditioned)'
         )
 
         # ── CV bridge ─────────────────────────────────────────────────────
@@ -73,7 +98,7 @@ class DepthNode(Node):
         self.frame_count = 0
         self.total_inference_time = 0.0
 
-        # ── Latest camera info (forwarded with depth) ─────────────────────
+        # ── Latest camera info (metric scale + forwarded with depth) ──────
         self._latest_camera_info: CameraInfo | None = None
 
         # ── QoS: sensor data (best effort for camera streams) ─────────────
@@ -87,9 +112,11 @@ class DepthNode(Node):
         self.image_sub = self.create_subscription(
             Image, input_topic, self._image_callback, sensor_qos
         )
-        # Subscribe to the matching CameraInfo so we can re-publish it with
-        # the depth image (needed by depth_image_proc).
-        camera_info_in = input_topic.rsplit('/', 1)[0] + '/camera_info'
+        # The matching CameraInfo carries the focal length Metric3D needs to
+        # de-canonicalise its prediction, and is re-published alongside the
+        # depth image for depth_image_proc.
+        if not camera_info_in:
+            camera_info_in = input_topic.rsplit('/', 1)[0] + '/camera_info'
         self.camera_info_sub = self.create_subscription(
             CameraInfo, camera_info_in, self._camera_info_callback, sensor_qos
         )
@@ -99,75 +126,134 @@ class DepthNode(Node):
         self.camera_info_pub = self.create_publisher(CameraInfo, camera_info_topic, sensor_qos)
 
         self.get_logger().info(
-            f'Subscribed to {input_topic}  →  publishing on {output_topic}'
+            f'Subscribed to {input_topic} (+ {camera_info_in})  →  '
+            f'publishing on {output_topic}'
         )
 
     # ──────────────────────────────────────────────────────────────────────
     # Model loading
     # ──────────────────────────────────────────────────────────────────────
-    def _load_model(self, model_path: str):
-        """Load the Depth Anything V2 metric depth model."""
-        import sys
-        # Ensure the metric_depth variant is imported (it has max_depth support).
-        # The base repo's depth_anything_v2.dpt does NOT accept max_depth.
-        metric_path = '/opt/depth_anything_v2/metric_depth'
-        if metric_path not in sys.path:
-            sys.path.insert(0, metric_path)
-        from depth_anything_v2.dpt import DepthAnythingV2
+    def _load_model(self):
+        """Load the Metric3D V2 model from the torch hub cache."""
+        self.get_logger().info(f'Loading {self.model_name} from {self.repo} via torch.hub')
+        # Weights are pre-fetched into the torch hub cache at image build time,
+        # so this resolves offline in the container.
+        model = torch.hub.load(
+            self.repo, self.model_name, pretrain=True, trust_repo=True
+        )
+        return model.to(self.device).eval()
 
-        # Model configs per encoder variant
-        model_configs = {
-            'vits': {'encoder': 'vits', 'features': 64,  'out_channels': [48, 96, 192, 384]},
-            'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-            'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-        }
+    # ──────────────────────────────────────────────────────────────────────
+    # Inference
+    # ──────────────────────────────────────────────────────────────────────
+    def _infer(self, bgr: np.ndarray, fx: float) -> np.ndarray:
+        """Return metric depth in metres, float32, shaped like ``bgr``.
 
-        if self.model_type not in model_configs:
-            self.get_logger().error(
-                f'Unknown model_type "{self.model_type}". '
-                f'Valid: {list(model_configs.keys())}'
-            )
-            raise ValueError(f'Unknown model_type: {self.model_type}')
+        The pre/post-processing steps (canonical resize, mean-value padding,
+        ImageNet normalisation, un-pad, de-canonical rescale) follow the
+        reference inference procedure from the upstream repo. Deviating from it
+        silently breaks metric scale, so keep the steps in this order.
 
-        config = model_configs[self.model_type]
-        model = DepthAnythingV2(**config, max_depth=self.max_depth)
+        The same procedure appears in ``depth_comparison``'s ``metric3d_v2``
+        backend. The duplication is deliberate — the comparison harness is an
+        experiment that will be retired, and this production node should not
+        depend on it — but a fix to one belongs in the other.
+        """
+        h, w = bgr.shape[:2]
+        rgb = bgr[:, :, ::-1]  # upstream normalisation statistics are RGB-ordered
 
-        # Resolve checkpoint path
-        if not model_path:
-            model_path = f'/models/depth_anything_v2_metric_vkitti_{self.model_type}.pth'
+        # ── Resize into canonical space, preserving aspect ratio ─────────────
+        scale = min(_CANONICAL_INPUT_SIZE[0] / h, _CANONICAL_INPUT_SIZE[1] / w)
+        resized = cv2.resize(
+            rgb, (int(round(w * scale)), int(round(h * scale))),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
-        self.get_logger().info(f'Loading weights from {model_path}')
-        state_dict = torch.load(model_path, map_location=self.device, weights_only=True)
-        model.load_state_dict(state_dict)
-        model = model.to(self.device).eval()
+        # ── Pad to the exact canonical size with the channel means ──────────
+        rh, rw = resized.shape[:2]
+        pad_h, pad_w = _CANONICAL_INPUT_SIZE[0] - rh, _CANONICAL_INPUT_SIZE[1] - rw
+        pad_top, pad_left = pad_h // 2, pad_w // 2
+        pad_bottom, pad_right = pad_h - pad_top, pad_w - pad_left
+        padded = cv2.copyMakeBorder(
+            resized, pad_top, pad_bottom, pad_left, pad_right,
+            cv2.BORDER_CONSTANT, value=_MEAN.tolist(),
+        )
 
-        return model
+        # ── Normalise and run ───────────────────────────────────────────────
+        tensor = torch.from_numpy(
+            ((padded.astype(np.float32) - _MEAN) / _STD).transpose(2, 0, 1)
+        )[None].to(self.device)
+
+        with torch.no_grad():
+            pred_depth, _confidence, _outputs = self.model.inference({'input': tensor})
+
+        # ── Undo the padding, then return to the source resolution ──────────
+        pred_depth = pred_depth.squeeze()
+        pred_depth = pred_depth[
+            pad_top:pred_depth.shape[0] - pad_bottom,
+            pad_left:pred_depth.shape[1] - pad_right,
+        ]
+        pred_depth = torch.nn.functional.interpolate(
+            pred_depth[None, None], (h, w), mode='bilinear', align_corners=False,
+        ).squeeze()
+
+        # ── De-canonicalise: canonical focal 1000 px → this camera's focal ──
+        # `fx` is for the source image; the same `scale` that took the image
+        # into canonical space applies to the focal length.
+        canonical_to_real = (fx * scale) / _CANONICAL_FOCAL
+        pred_depth = torch.clamp(pred_depth * canonical_to_real, 0.0, self.max_depth)
+
+        return pred_depth.cpu().numpy().astype(np.float32)
 
     # ──────────────────────────────────────────────────────────────────────
     # Callbacks
     # ──────────────────────────────────────────────────────────────────────
     def _camera_info_callback(self, msg: CameraInfo):
-        """Cache the latest CameraInfo for re-publication with depth frames."""
+        """Cache the latest CameraInfo — intrinsics source and depth companion."""
         self._latest_camera_info = msg
 
     def _image_callback(self, msg: Image):
-        """Run Depth Anything V2 inference on the incoming RGB image."""
+        """Run Metric3D V2 inference on the incoming RGB image."""
         # Rate limiting — skip frame if we're ahead of the target FPS
         now = time.monotonic()
         if (now - self.last_inference_time) < self.min_interval:
             return
 
+        info = self._latest_camera_info
+        if info is None:
+            self.get_logger().warn(
+                'Metric3D recovers metric scale from the camera focal length; '
+                'no CameraInfo has arrived yet — dropping frames until it does.',
+                throttle_duration_sec=5.0,
+            )
+            return
+
         try:
-            # Convert ROS Image → OpenCV BGR (model expects BGR input)
+            # Convert ROS Image → OpenCV BGR
             cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         except Exception as e:
             self.get_logger().error(f'cv_bridge conversion failed: {e}')
             return
 
+        # The focal length only describes this frame if the CameraInfo was
+        # calibrated at the image's resolution. A mismatch scales every metric
+        # depth value by the same wrong factor, so say so loudly.
+        h, w = cv_image.shape[:2]
+        if (info.width, info.height) != (w, h):
+            self.get_logger().warn(
+                f'CameraInfo is {info.width}x{info.height} but the image is '
+                f'{w}x{h}; the focal length does not describe this frame and '
+                'metric depth will be scaled wrongly.',
+                throttle_duration_sec=10.0,
+            )
+
         # ── Inference ─────────────────────────────────────────────────
         t0 = time.monotonic()
-        with torch.no_grad():
-            depth = self.model.infer_image(cv_image)  # returns numpy (H, W), float32, metres
+        try:
+            depth = self._infer(cv_image, fx=float(info.k[0]))
+        except Exception as e:
+            self.get_logger().error(f'Metric3D inference failed: {e}')
+            return
         t1 = time.monotonic()
 
         self.last_inference_time = t1
@@ -183,17 +269,17 @@ class DepthNode(Node):
             )
 
         # ── Publish depth image ──────────────────────────────────────
-        depth_msg = self.bridge.cv2_to_imgmsg(depth.astype(np.float32), encoding='32FC1')
+        depth_msg = self.bridge.cv2_to_imgmsg(
+            np.ascontiguousarray(depth, dtype=np.float32), encoding='32FC1'
+        )
         depth_msg.header = msg.header  # preserve frame_id + timestamp
         self.depth_pub.publish(depth_msg)
 
         # Re-publish CameraInfo with the depth timestamp so depth_image_proc
         # can synchronize the two.
-        if self._latest_camera_info is not None:
-            info_msg = self._latest_camera_info
-            info_msg.header.stamp = msg.header.stamp
-            info_msg.header.frame_id = msg.header.frame_id
-            self.camera_info_pub.publish(info_msg)
+        info.header.stamp = msg.header.stamp
+        info.header.frame_id = msg.header.frame_id
+        self.camera_info_pub.publish(info)
 
 
 def main(args=None):

@@ -116,6 +116,9 @@ RUN python3 -c "import numpy; print('numpy==' + numpy.__version__)" > /tmp/pip-c
 # mmcv 1.x compatibility shim. Metric3D imports mmcv on its inference path, but
 # mmcv 1.x will not install on Python 3.12 and mmcv 2.x dropped the mmcv.utils
 # namespace entirely. See compat/mmcv/__init__.py for the full reasoning.
+#
+# Shared with the monocular_depth image, which is why the build context for
+# this Dockerfile is the repository root rather than src/depth_comparison/.
 COPY compat/ /opt/metric3d_compat/
 ENV PYTHONPATH="/opt/metric3d_compat:${PYTHONPATH}"
 

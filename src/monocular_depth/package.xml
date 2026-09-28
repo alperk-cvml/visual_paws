@@ -2,7 +2,7 @@
 <package format="3">
   <name>monocular_depth</name>
   <version>0.0.1</version>
-  <description>Monocular metric depth estimation using Depth Anything V2 — subscribes to RGB image and publishes metric depth (32FC1, metres)</description>
+  <description>Monocular metric depth estimation using Metric3D V2 — subscribes to RGB image + CameraInfo and publishes metric depth (32FC1, metres)</description>
 
   <maintainer email="you@yourdomain.com">you</maintainer>
   <license>Apache-2.0</license>
@@ -13,6 +13,8 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>cv_bridge</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

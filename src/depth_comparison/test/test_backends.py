@@ -118,8 +118,11 @@ def test_mmcv_shim_exposes_exactly_what_metric3d_imports():
     import os
     import sys
 
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'compat'))
+    # The shim lives at the repository root: monocular_depth's image needs it
+    # as well, so it is no longer a depth_comparison-local file.
+    repo_root = os.path.abspath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
+    sys.path.insert(0, os.path.join(repo_root, 'compat'))
     from mmcv.utils import Config, DictAction, collect_env, get_git_hash  # noqa: F401
 
     import mmcv.utils as shim

@@ -79,10 +79,14 @@ Metric3D imports **mmcv 1.x** on its inference path (`mono/utils/comm.py` does
 here: 1.x fails to install on Python 3.12, and 2.x removed the `mmcv.utils`
 namespace entirely, moving its contents into mmengine.
 
-[`compat/mmcv/`](compat/mmcv/) supplies the four symbols Metric3D actually
+[`compat/mmcv/`](../../compat/mmcv/) supplies the four symbols Metric3D actually
 imports — `collect_env`, `Config`, `DictAction`, `get_git_hash` — re-exported
 from mmengine, and raises `ImportError` on anything else so an upstream change
 fails loudly. The Metric3D checkout in the torch hub cache is never modified.
+
+The shim lives at the repository root because `monocular_depth` needs it too —
+it now runs Metric3D as the production depth source. That is also why both
+images build with the repository root as their Docker context.
 
 Verified behaviour: doubling `fx` doubles predicted depth (measured ratio 1.99
 against an expected 2.00), confirming Metric3D recovers metric scale from the

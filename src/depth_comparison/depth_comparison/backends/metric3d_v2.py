@@ -10,6 +10,10 @@ The pre/post-processing below (canonical resize, mean-value padding, ImageNet
 normalisation, un-pad, de-canonical rescale) follows the reference inference
 procedure from the upstream repo. Deviating from it silently breaks metric
 scale, so keep the steps in this order.
+
+``monocular_depth``'s depth node — where Metric3D now runs in production —
+carries the same procedure. The duplication keeps the production node free of a
+dependency on this comparison harness, but a fix here belongs there too.
 """
 
 from typing import Any

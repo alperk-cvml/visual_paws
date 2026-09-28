@@ -19,7 +19,7 @@ setup(
     zip_safe=True,
     maintainer='you',
     maintainer_email='you@yourdomain.com',
-    description='Monocular metric depth estimation using Depth Anything V2',
+    description='Monocular metric depth estimation using Metric3D V2',
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
