@@ -109,13 +109,9 @@ both publish with `gz_frame_id` `camera_link_optical`. Verified through the SDF
 conversion, they resolve to an identical pose, so the ground-truth cloud
 overlays the inferred ones with no parallax and no rotation.
 
-Two differences remain between the `gt` channel and the model channels, both
-intentional:
+The depth sensor and RGB camera both use 640×480 resolution and the same FOV.
+One timing difference remains between the `gt` channel and the model channels:
 
-- **Resolution** — the depth sensor is 160×120 against the RGB camera's
-  640×480. The FOV matches, so the intrinsics stay consistent and the cloud is
-  correct, just 16× sparser. Raise it to 640×480 if you want a per-pixel
-  quantitative comparison rather than a visual one.
 - **Timing** — the relay republishes at the sensor's 10 Hz, independent of the
   node's RGB-driven inference rate. Fine for RViz inspection; a per-pixel metric
   would need the two synchronised on timestamp first.

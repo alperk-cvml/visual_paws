@@ -608,3 +608,6 @@ Seems like Metric3D is currently the closest alternative.
 We will take a detour. I'll try if I can solve the depth problem kinetically. I have two alternatives
  - [ ] Alternative 1: Solve it via ground plane distance
  - [ ] Alternative 2: Use IMU and leg odometry to estimate the motion and compare it to the motion of inferred with monodepth pointcloud.
+
+ Alternative 1 launch - docker compose --env-file depth-scale-probe.env   -f docker-compose-depth-scale-probe.yaml up -d
+ Alternative 2 launch - docker compose --env-file odometry-scale-probe.env   -f docker-compose-odometry-scale-probe.yaml up -d 
