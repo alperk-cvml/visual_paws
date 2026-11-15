@@ -44,6 +44,12 @@
   <xacro:property name="tail_length" value="0.05"/>
   <xacro:property name="body_mass"   value="1.30"/>
 
+  <!-- Experiment knob: raise the camera this far above its head mount
+       (metres). Lets the depth scale probes test whether monocular depth's
+       scale error depends on camera height. camera_link has no inertia, so
+       this changes the view only, not the dynamics. Keep 0 otherwise. -->
+  <xacro:arg name="camera_mast_height" default="0.0"/>
+
   <!-- Leg link visuals/masses. Hip and upper leg each house a servo. -->
   <xacro:property name="hip_box_x"  value="0.060"/>
   <xacro:property name="hip_box_z"  value="0.045"/>
@@ -306,7 +312,7 @@
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="camera_link"/>
-    <origin xyz="${body_length/2 + head_length} 0 ${(body_height - head_height)/2 + 0.01}" rpy="0 0 0"/>
+    <origin xyz="${body_length/2 + head_length} 0 ${(body_height - head_height)/2 + 0.01 + $(arg camera_mast_height)}" rpy="0 0 0"/>
   </joint>
   <link name="camera_link">
     <visual>
@@ -498,8 +504,8 @@
              identical up to resolution. -->
         <horizontal_fov>1.3962634</horizontal_fov>
         <image>
-          <width>160</width>
-          <height>120</height>
+          <width>640</width>
+          <height>480</height>
           <format>R_FLOAT32</format>
         </image>
         <clip>

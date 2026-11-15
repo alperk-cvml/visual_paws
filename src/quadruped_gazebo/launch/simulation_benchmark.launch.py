@@ -51,6 +51,7 @@ def _generate_and_include(context, package_share: Path):
             "yaw_pose": str(spawn["yaw"]),
             "use_sim_time": LaunchConfiguration("use_sim_time"),
             "localization_mode": LaunchConfiguration("localization_mode"),
+            "camera_mast_height": LaunchConfiguration("camera_mast_height"),
         }.items(),
     )
     return [
@@ -91,6 +92,7 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="ground_truth",
                 choices=["ground_truth", "slam"],
             ),
+            DeclareLaunchArgument("camera_mast_height", default_value="0.0"),
             OpaqueFunction(function=_generate_and_include, args=[package_share]),
         ]
     )

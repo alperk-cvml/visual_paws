@@ -48,6 +48,11 @@ def generate_launch_description():
         default_value="false",
         description="Run only the Gazebo server (no GUI); for CI and tmux-only hosts",
     )
+    declare_camera_mast_height = DeclareLaunchArgument(
+        "camera_mast_height",
+        default_value="0.0",
+        description="Extra camera height above the head mount (m); depth scale experiments only",
+    )
     declare_localization_mode = DeclareLaunchArgument(
         "localization_mode",
         default_value="ground_truth",
@@ -61,7 +66,10 @@ def generate_launch_description():
     # ── Robot description ─────────────────────────────────────────
     xacro_file = os.path.join(pkg_share, "urdf", "quadruped.urdf.xacro")
     robot_description_content = ParameterValue(
-        Command(["xacro ", xacro_file]),
+        Command([
+            "xacro ", xacro_file,
+            " camera_mast_height:=", LaunchConfiguration("camera_mast_height"),
+        ]),
         value_type=str,
     )
 
@@ -213,6 +221,7 @@ def generate_launch_description():
         declare_z,
         declare_yaw,
         declare_headless,
+        declare_camera_mast_height,
         declare_localization_mode,
         robot_state_publisher,
         gazebo,
