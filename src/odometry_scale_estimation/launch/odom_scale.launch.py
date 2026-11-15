@@ -29,7 +29,7 @@ ARGUMENTS = [
         description='Parent namespace for scale/shift/residual/ref_motion/'
                     'marker'),
     DeclareLaunchArgument(
-        'model', default_value='scalar',
+        'model', default_value='affine',
         description='Fit model: scalar (chord_est = s·chord_ref) or affine '
                     '(chord_est = s·chord_ref + b)'),
     DeclareLaunchArgument(

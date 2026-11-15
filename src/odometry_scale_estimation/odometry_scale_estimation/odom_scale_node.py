@@ -70,7 +70,7 @@ class OdomScaleNode(Node):
         self.declare_parameter('estimate_topic', '/odom_lidar')
         self.declare_parameter('output_namespace', '/odom_scale')
         # Error model: one of trajectory_compare.MODELS.
-        self.declare_parameter('model', 'scalar')
+        self.declare_parameter('model', 'affine')
         # Comparison window (s) and chord construction.
         self.declare_parameter('window_duration', 5.0)
         self.declare_parameter('min_pair_dt', 0.5)

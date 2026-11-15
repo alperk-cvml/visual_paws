@@ -57,10 +57,10 @@ class ScaleCorrectionNode(Node):
         # '' derives `<input_topic>_corrected`.
         self.declare_parameter('output_topic', '')
         # Estimate sources. `scale_topic` is required; `shift_topic` is
-        # optional and only meaningful for the affine model (no estimator
-        # publishes a depth-space shift yet — odometry_scale_estimation's
-        # /odom_scale/shift is a displacement-space diagnostic, see its
-        # README and correction_models.AffineCorrection).
+        # optional and only meaningful for the affine model (use
+        # /ground_plane/shift from ground_plane_estimation `estimate_shift`;
+        # odometry_scale_estimation's /odom_scale/shift is a displacement-
+        # space diagnostic, see its README).
         self.declare_parameter('scale_topic', '/ground_plane/scale')
         self.declare_parameter('shift_topic', '')
         # Error model: one of correction_models.MODELS.

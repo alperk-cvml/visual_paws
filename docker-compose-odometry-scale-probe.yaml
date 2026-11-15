@@ -25,6 +25,7 @@
 #     -> depth_image_proc     depth image -> /depth/points
 #     -> lidar_odometry       KISS-ICP on that cloud -> /odom_lidar
 #     -> odometry_scale_estimation   /odom_lidar vs /odom_lko -> scale
+#     -> ground_plane_estimation     /depth/points + s -> depth-space shift b
 #     -> pointcloud_scale_correction /depth/points -> /depth/points_corrected
 #
 #   quadruped_leg_odometry     /joint_states + /imu/data -> /odom_lko
@@ -78,6 +79,10 @@ include:
   # Closes the loop: applies the motion-derived scale back onto /depth/points,
   # republishing /depth/points_corrected for side-by-side RViz comparison.
   - path: src/pointcloud_scale_correction/docker-compose.yaml
+  # Depth-space shift b: with s pinned to the odometry estimate, the ground
+  # (known true depth along every ray) gives b -> /ground_plane/shift. Gives
+  # the affine correction its second parameter.
+  - path: src/ground_plane_estimation/docker-compose.yaml
   - path: src/rviz/docker-compose.yaml
   # Teleop chain: keyboard -> /cmd_vel -> joint commands. Optional in the
   # sense that nothing breaks without it — but the probe needs motion, so

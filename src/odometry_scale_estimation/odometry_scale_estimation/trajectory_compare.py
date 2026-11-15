@@ -70,7 +70,9 @@ class TrajectoryBuffer:
         if not (np.isfinite(t) and np.all(np.isfinite(position))):
             return
         if self._times:
-            if t <= self._times[-1]:
+            if t == self._times[-1]:
+                return  # repeated stamp (ros2_control republishes some ticks)
+            if t < self._times[-1]:
                 self.clear()  # time went backwards: stream restarted
             elif (np.linalg.norm(position - self._positions[-1])
                   > self._max_jump):

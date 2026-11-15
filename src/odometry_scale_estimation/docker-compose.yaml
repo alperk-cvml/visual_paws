@@ -24,7 +24,7 @@ services:
       - ODOM_SCALE_ESTIMATE_TOPICS=${ODOM_SCALE_ESTIMATE_TOPICS:-/odom_lidar}
       - ODOM_SCALE_NAMESPACE=${ODOM_SCALE_NAMESPACE:-/odom_scale}
       # Fit model: scalar (chord_est = s·chord_ref) or affine (… + b).
-      - ODOM_SCALE_MODEL=${ODOM_SCALE_MODEL:-scalar}
+      - ODOM_SCALE_MODEL=${ODOM_SCALE_MODEL:-affine}
       - ODOM_SCALE_WINDOW=${ODOM_SCALE_WINDOW:-5.0}
       # Minimum reference motion (m) in the window before fitting.
       - ODOM_SCALE_MIN_MOTION=${ODOM_SCALE_MIN_MOTION:-0.1}

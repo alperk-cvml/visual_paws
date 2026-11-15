@@ -51,6 +51,17 @@ def test_buffer_clears_on_backwards_time():
     assert len(buf) == 1 and buf.latest_time == 0.5
 
 
+def test_buffer_keeps_window_on_repeated_stamp():
+    buf = TrajectoryBuffer(window=10.0)
+    buf.append(1.0, [0.0, 0.0, 0.0])
+    buf.append(2.0, [0.1, 0.0, 0.0])
+    buf.append(2.0, [0.2, 0.0, 0.0])  # ros2_control republished the tick
+    buf.append(3.0, [0.3, 0.0, 0.0])
+    times, pts = buf.snapshot(3.0)
+    assert list(times) == [1.0, 2.0, 3.0]
+    assert pts[1, 0] == 0.1  # first sample at a stamp wins
+
+
 def test_buffer_clears_on_position_jump():
     buf = TrajectoryBuffer(window=10.0, max_jump=1.0)
     buf.append(1.0, [5.0, 0.0, 0.0])

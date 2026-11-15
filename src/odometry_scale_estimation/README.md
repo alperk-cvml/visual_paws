@@ -59,8 +59,9 @@ motion as a clean chord-affine map. Interpretation:
 - `scale` stable and `shift ≈ 0` → scalar hypothesis supported; feed
   `/odom_scale/scale` to `pointcloud_scale_correction` as-is.
 - `shift` consistently non-zero, or `scale` drifting with scene depth →
-  affine depth error suspected; a true depth-space `(s, b)` split then
-  needs two observables (this probe + the ground-plane probe jointly).
+  affine depth error suspected. The depth-space `b` comes from
+  `ground_plane_estimation` (`estimate_shift:=true`, `scale_topic` set to
+  this probe's `/scale`): this probe supplies `s`, the ground supplies `b`.
 
 ## Run
 
@@ -90,7 +91,7 @@ mean anything; nothing is published while the robot stands still.
 |---|---|---|
 | `reference_topic` | `/odom_lko` | Metric-truth odometry (leg kinematics + IMU) |
 | `estimate_topic` | `/odom_lidar` | Scale-bearing odometry (node-level; launch takes `estimate_topics`) |
-| `model` | `scalar` | `scalar` or `affine` |
+| `model` | `affine` | `scalar` or `affine` |
 | `window_duration` | 5.0 s | Sliding comparison window |
 | `min_pair_dt` | 0.5 s | Minimum time separation of a chord pair |
 | `min_motion` | 0.1 m | Minimum reference chord before fitting (excitation gate) |

@@ -190,10 +190,9 @@ class AffineCorrection(CorrectionModel):
 
     With shift ≡ 0 this reduces exactly to `ScalarCorrection`. It is wired
     up now so that the moment an estimator for `b` exists, only the
-    observation source changes. (The IMU/leg-odometry motion probe now
-    exists — `odometry_scale_estimation` — but its affine intercept lives in
-    displacement space, not depth space; a true depth-space `b` needs the
-    two probes combined, or a two-plane fit.)
+    observation source changes. (The odometry probe's intercept lives in
+    displacement space, so `b` comes from `ground_plane_estimation`
+    `estimate_shift`, with `s` from the odometry probe.)
     """
 
     name = 'affine'
