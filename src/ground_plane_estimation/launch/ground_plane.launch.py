@@ -37,6 +37,16 @@ ARGUMENTS = [
         'target_fps', default_value='5.0',
         description='Upper bound on per-topic processing rate (Hz)'),
     DeclareLaunchArgument(
+        'estimate_shift', default_value='false',
+        description='Also estimate the depth-space shift b of '
+                    'depth_pred = s*depth_true + b (cloud must be in the '
+                    'camera optical frame); publishes <ns>/shift'),
+    DeclareLaunchArgument(
+        'scale_topic', default_value='',
+        description='External scale estimate (Float32) to hold s fixed while '
+                    'solving b, e.g. /odom_scale/odom_lidar/scale; empty '
+                    'solves s and b jointly from the ground'),
+    DeclareLaunchArgument(
         'use_sim_time', default_value='false',
         description='Use a ROS simulation clock'),
 ]
@@ -64,6 +74,8 @@ def _setup(context, *args, **kwargs):
         'expected_base_height': float(arg('expected_base_height')),
         'height_reference_frame': arg('height_reference_frame'),
         'target_fps': float(arg('target_fps')),
+        'estimate_shift': arg('estimate_shift').lower() in ('true', '1'),
+        'scale_topic': arg('scale_topic'),
         'use_sim_time': arg('use_sim_time').lower() in ('true', '1'),
     }
 

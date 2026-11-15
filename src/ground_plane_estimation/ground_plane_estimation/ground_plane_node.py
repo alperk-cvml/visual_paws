@@ -46,7 +46,7 @@ from std_msgs.msg import Float32
 from tf2_ros import Buffer, TransformListener
 from visualization_msgs.msg import Marker
 
-from .plane_fit import fit_ground_plane
+from .plane_fit import fit_depth_affine, fit_ground_plane, ground_ray_depths
 
 UP = np.array([0.0, 0.0, 1.0])
 
@@ -112,6 +112,15 @@ class GroundPlaneNode(Node):
         self.declare_parameter('expected_base_height', 0.0)
         self.declare_parameter('height_reference_frame', '')
         self.declare_parameter('publish_marker', True)
+        # Depth-space affine error (depth_pred = s·depth_true + b). Needs a
+        # cloud in the camera OPTICAL frame (z = depth) and a scale reference.
+        # `scale_topic` (e.g. /odom_scale/odom_lidar/scale) pins s to an
+        # external estimate and solves only b; empty solves both from the
+        # ground (needs depth spread).
+        self.declare_parameter('estimate_shift', False)
+        self.declare_parameter('scale_topic', '')
+        self.declare_parameter('scale_timeout', 30.0)
+        self.declare_parameter('min_depth_spread', 0.5)
 
         p = self.get_parameter
         self._base_frame = p('base_frame').value
@@ -125,6 +134,11 @@ class GroundPlaneNode(Node):
         self._min_inliers = int(p('min_inliers').value)
         self._expected_base_height = float(p('expected_base_height').value)
         self._height_ref_frame = str(p('height_reference_frame').value)
+        self._estimate_shift = bool(p('estimate_shift').value)
+        self._scale_timeout = float(p('scale_timeout').value)
+        self._min_spread = float(p('min_depth_spread').value)
+        self._known_scale = None
+        self._known_scale_time = 0.0
         self._min_period = 1.0 / max(float(p('target_fps').value), 1e-3)
         self._last_stamp = None
         self._rng = np.random.default_rng(0)
@@ -141,12 +155,28 @@ class GroundPlaneNode(Node):
             if bool(p('publish_marker').value) else None
         )
 
+        self._pub_shift = self._pub_affine_scale = None
+        if self._estimate_shift:
+            self._pub_shift = self.create_publisher(Float32, f'{ns}/shift', 10)
+            scale_topic = str(p('scale_topic').value)
+            if scale_topic:
+                self.create_subscription(
+                    Float32, scale_topic, self._on_known_scale, 10)
+            else:
+                self._pub_affine_scale = self.create_publisher(
+                    Float32, f'{ns}/affine_scale', 10)
+
         topic = str(p('input_topic').value)
         self.create_subscription(
             PointCloud2, topic, self._on_cloud, qos_profile_sensor_data)
         self.get_logger().info(
             f'ground plane estimation: {topic} -> {ns}/* '
             f'(base_frame={self._base_frame})')
+
+    def _on_known_scale(self, msg: Float32):
+        if np.isfinite(msg.data) and msg.data > 0.0:
+            self._known_scale = float(msg.data)
+            self._known_scale_time = self.get_clock().now().nanoseconds * 1e-9
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -254,8 +284,51 @@ class GroundPlaneNode(Node):
         if expected is not None and expected > 1e-3:
             self._pub_scale.publish(Float32(data=float(camera_height / expected)))
 
+        if self._estimate_shift and expected is not None and expected > 1e-3:
+            self._publish_shift(stamp, points, rot, cloud_frame,
+                                camera_height / expected, expected)
+
         if self._pub_marker is not None:
             self._publish_marker(msg.header.stamp, fit)
+
+    def _publish_shift(self, stamp, points, rot_base, cloud_frame,
+                       scale_init, camera_height):
+        """Depth-space (s, b) from ground pixels with known true depth."""
+        # Up in the cloud frame: from the reference frame when it defines the
+        # ground, else from the (assumed level) base frame.
+        try:
+            if self._expected_base_height <= 0.0 and self._height_ref_frame:
+                rot_up, _ = self._lookup(
+                    self._height_ref_frame, cloud_frame, stamp)
+            else:
+                rot_up = rot_base
+        except Exception:
+            return
+        up_cam = rot_up.T @ UP
+        known = None
+        if self._pub_affine_scale is None:
+            now = self.get_clock().now().nanoseconds * 1e-9
+            if (self._known_scale is None or (
+                    self._scale_timeout > 0.0
+                    and now - self._known_scale_time > self._scale_timeout)):
+                self.get_logger().warning(
+                    'no fresh external scale, skipping shift',
+                    throttle_duration_sec=5.0)
+                return
+            known = self._known_scale
+        z_pred, z_true = ground_ray_depths(
+            points.astype(np.float64), up_cam, camera_height)
+        if len(z_pred) > self._max_points:
+            keep = self._rng.choice(len(z_pred), self._max_points, replace=False)
+            z_pred, z_true = z_pred[keep], z_true[keep]
+        res = fit_depth_affine(
+            z_pred, z_true, scale_init=scale_init, known_scale=known,
+            min_inliers=self._min_inliers, min_spread=self._min_spread)
+        if res is None:
+            return
+        self._pub_shift.publish(Float32(data=res.shift))
+        if self._pub_affine_scale is not None:
+            self._pub_affine_scale.publish(Float32(data=res.scale))
 
     def _publish_marker(self, header_stamp, fit):
         """Thin slab on the fitted plane under the robot, for RViz."""

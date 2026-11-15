@@ -39,6 +39,25 @@ of the comparison pipeline gets its own scale channel on identical frames.
 | `height_reference_frame` (e.g. `odom`) | Per-frame TF: expected camera height = z of the cloud frame origin in that frame. Correct whenever the reference frame's z=0 plane is the ground — true in Gazebo with `LOCALIZATION_MODE=ground_truth`. |
 | neither | `/scale` is not published; distances still are. |
 
+## Depth-space shift (`estimate_shift`)
+
+For an affine depth error `depth_pred = s·depth_true + b` the ground is the
+one surface whose true depth along every pixel ray is known from geometry
+(`z_true = −h / (up·ray)`, camera height `h` and up vector from TF), so
+regressing `z_pred` on `z_true` over ground pixels gives a true depth-space
+`b` (unlike the odometry probe's displacement-space intercept). Cloud must
+be in the camera optical frame (z = depth).
+
+| Setting | Behaviour |
+|---|---|
+| `estimate_shift:=true`, `scale_topic:=''` | Joint fit of `s` and `b` (needs ≥ `min_depth_spread` of true-depth spread); publishes `<ns>/affine_scale` and `<ns>/shift`. |
+| `estimate_shift:=true`, `scale_topic:=/odom_scale/odom_lidar/scale` | `s` held at the external estimate, `b = median(z_pred − s·z_true)`; publishes `<ns>/shift` only. Skipped while that scale is older than `scale_timeout`. |
+
+Feed `<ns>/shift` to `pointcloud_scale_correction` (`model:=affine`,
+`shift_topic`). Inliers are re-selected over tightening bands around the
+current fit, so obstacles are rejected. `s` from odometry is an *effective*
+ICP scale, so `b` absorbs part of any mismatch with the depth-space `s`.
+
 ## Run
 
 Gazebo, ground-truth depth (sanity: scale should sit at 1.0):

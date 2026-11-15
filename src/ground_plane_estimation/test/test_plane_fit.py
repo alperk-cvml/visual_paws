@@ -56,3 +56,55 @@ def test_rejects_insufficient_points():
     rng = np.random.default_rng(4)
     assert fit_ground_plane(_ground(rng, n=10), UP, min_inliers=50, rng=rng) is None
     assert fit_ground_plane(np.empty((0, 3)), UP, rng=rng) is None
+
+
+# ── depth-space affine fit ────────────────────────────────────────────────
+
+def _affine_scene(rng, s, b, n=3000, height=0.3, pitch=0.35):
+    """Ground pixels seen by a camera pitched down; returns (points, up_cam, h)."""
+    # Optical frame: x right, y down, z forward. Up = -y tilted by pitch.
+    up_cam = np.array([0.0, -np.cos(pitch), np.sin(pitch)])
+    u = rng.uniform(-0.5, 0.5, n)
+    v = rng.uniform(-0.3, 0.9, n)
+    rays = np.column_stack((u, v, np.ones(n)))
+    d = rays @ up_cam
+    keep = d < -0.05
+    rays, d = rays[keep], d[keep]
+    z_true = -height / d
+    z_pred = s * z_true + b + rng.normal(0, 0.01, len(z_true))
+    return rays * z_pred[:, None], up_cam, height
+
+
+def test_ground_ray_depths_recovers_true_depth():
+    from ground_plane_estimation.plane_fit import ground_ray_depths
+    rng = np.random.default_rng(3)
+    pts, up, h = _affine_scene(rng, 1.0, 0.0)
+    z_pred, z_true = ground_ray_depths(pts, up, h)
+    assert np.abs(z_pred - z_true).max() < 0.06
+
+
+def test_joint_affine_fit_recovers_scale_and_shift():
+    from ground_plane_estimation.plane_fit import (
+        fit_depth_affine, ground_ray_depths)
+    rng = np.random.default_rng(4)
+    pts, up, h = _affine_scene(rng, 1.6, 0.4)
+    z_pred, z_true = ground_ray_depths(pts, up, h)
+    # Obstacles whose rays also point down must be rejected as outliers.
+    z_pred = np.concatenate((z_pred, rng.uniform(0.5, 5.0, 300)))
+    z_true = np.concatenate((z_true, rng.uniform(0.5, 5.0, 300)))
+    fit = fit_depth_affine(z_pred, z_true, scale_init=1.5)
+    assert fit is not None
+    assert abs(fit.scale - 1.6) < 0.05 and abs(fit.shift - 0.4) < 0.05
+
+
+def test_known_scale_solves_shift_only():
+    from ground_plane_estimation.plane_fit import (
+        fit_depth_affine, ground_ray_depths)
+    rng = np.random.default_rng(5)
+    pts, up, h = _affine_scene(rng, 1.3, -0.25)
+    z_pred, z_true = ground_ray_depths(pts, up, h)
+    fit = fit_depth_affine(z_pred, z_true, known_scale=1.3)
+    assert fit is not None and abs(fit.shift + 0.25) < 0.02
+    # Constant true depth has no spread: the joint fit must refuse.
+    assert fit_depth_affine(np.full(500, 2.0), np.full(500, 1.5),
+                            scale_init=1.3) is None

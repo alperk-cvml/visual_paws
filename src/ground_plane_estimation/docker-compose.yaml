@@ -25,6 +25,10 @@ services:
       - GROUND_PLANE_EXPECTED_BASE_HEIGHT=${GROUND_PLANE_EXPECTED_BASE_HEIGHT:-0.0}
       - GROUND_PLANE_HEIGHT_REFERENCE_FRAME=${GROUND_PLANE_HEIGHT_REFERENCE_FRAME:-odom}
       - GROUND_PLANE_TARGET_FPS=${GROUND_PLANE_TARGET_FPS:-5.0}
+      # Depth-space shift b (cloud must be in the camera optical frame).
+      # SCALE_TOPIC pins s to an external estimate; empty fits s and b.
+      - GROUND_PLANE_ESTIMATE_SHIFT=${GROUND_PLANE_ESTIMATE_SHIFT:-false}
+      - GROUND_PLANE_SCALE_TOPIC=${GROUND_PLANE_SCALE_TOPIC:-}
 
     volumes:
       # ROS 2 workspace
@@ -54,4 +58,6 @@ services:
           expected_base_height:=$${GROUND_PLANE_EXPECTED_BASE_HEIGHT} \
           height_reference_frame:=$${GROUND_PLANE_HEIGHT_REFERENCE_FRAME} \
           target_fps:=$${GROUND_PLANE_TARGET_FPS} \
+          estimate_shift:=$${GROUND_PLANE_ESTIMATE_SHIFT} \
+          scale_topic:=$${GROUND_PLANE_SCALE_TOPIC} \
           use_sim_time:=$${USE_SIM_TIME}

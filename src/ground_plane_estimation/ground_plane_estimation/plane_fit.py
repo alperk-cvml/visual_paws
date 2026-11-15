@@ -116,3 +116,88 @@ def fit_ground_plane(
         candidates=n_pts,
         rms=float(np.sqrt(np.mean(residuals**2))),
     )
+
+
+# ── Depth-space affine error (depth_pred = s·depth_true + b) ─────────────
+
+@dataclass(frozen=True)
+class AffineDepthFit:
+    """Depth-space error parameters recovered from the ground."""
+
+    scale: float     # s in depth_pred = s·depth_true + b
+    shift: float     # b (m), true depth-space shift
+    inliers: int
+    rms: float       # RMS depth residual over inliers (m)
+
+
+def ground_ray_depths(points: np.ndarray, up_cam: np.ndarray,
+                      camera_height: float, *, min_down: float = 0.05,
+                      max_true_depth: float = 20.0
+                      ) -> tuple[np.ndarray, np.ndarray]:
+    """True ground depth along each point's pixel ray.
+
+    `points` are (N,3) in the camera OPTICAL frame (z = depth). For the ray
+    r = (x/z, y/z, 1) the ground is hit where up·(z r) = −h, i.e.
+    z_true = −h / (up·r). Rays that do not point clearly downward
+    (up·r > −min_down) or hit the ground beyond `max_true_depth` are
+    invalid. Returns (z_pred, z_true) for the valid points only.
+    """
+    z = points[:, 2]
+    ok = z > 1e-6
+    points, z = points[ok], z[ok]
+    ray = points / z[:, None]
+    denom = ray @ np.asarray(up_cam, dtype=np.float64)
+    down = denom < -min_down
+    z_true = -float(camera_height) / denom[down]
+    near = z_true < max_true_depth
+    return z[down][near], z_true[near]
+
+
+def fit_depth_affine(z_pred: np.ndarray, z_true: np.ndarray, *,
+                     scale_init: float = 1.0,
+                     known_scale: float | None = None,
+                     bands: tuple = (0.25, 0.12, 0.06),
+                     min_abs_band: float = 0.05,
+                     min_inliers: int = 100,
+                     min_spread: float = 0.5) -> AffineDepthFit | None:
+    """Fit depth_pred = s·depth_true + b on ground pixels.
+
+    The ground is the one surface whose true depth along every ray is known
+    from geometry (`ground_ray_depths`), so z_pred vs. z_true is a direct
+    regression of the depth error — no motion needed, and unlike a plane
+    fit it still works when the predicted ground is no longer planar
+    (which an additive depth shift makes it).
+
+    With `known_scale` (e.g. from the odometry probe) only b is solved —
+    b = median(z_pred − s·z_true) — which needs no depth spread. Without it
+    both are solved by OLS and the inliers must span at least `min_spread`
+    metres of true depth, otherwise s and b are not separable and None is
+    returned. Inliers are re-selected over successively tighter `bands`
+    (relative to the current prediction) starting from (scale_init, 0), so
+    obstacles whose rays also point down are rejected.
+    """
+    z_pred = np.asarray(z_pred, dtype=np.float64)
+    z_true = np.asarray(z_true, dtype=np.float64)
+    s = float(known_scale if known_scale is not None else scale_init)
+    b = 0.0
+    mask = None
+    for band in bands:
+        pred = s * z_true + b
+        mask = np.abs(z_pred - pred) < np.maximum(band * np.abs(pred),
+                                                  min_abs_band)
+        if int(mask.sum()) < min_inliers:
+            return None
+        zp, zt = z_pred[mask], z_true[mask]
+        if known_scale is not None:
+            b = float(np.median(zp - s * zt))
+        else:
+            if float(np.std(zt)) < min_spread:
+                return None
+            design = np.column_stack((zt, np.ones_like(zt)))
+            (s, b), *_ = np.linalg.lstsq(design, zp, rcond=None)
+            s, b = float(s), float(b)
+    if not np.isfinite(s) or not np.isfinite(b) or s <= 0.0:
+        return None
+    resid = z_pred[mask] - (s * z_true[mask] + b)
+    return AffineDepthFit(scale=s, shift=b, inliers=int(mask.sum()),
+                          rms=float(np.sqrt(np.mean(resid ** 2))))
