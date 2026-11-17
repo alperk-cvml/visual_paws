@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Design Principles
 
-- **Camera-only perception**: No LiDAR. Metric depth and surface normals are inferred from RGB via neural networks (Depth Anything V2 + Metric3D V2).
+- **Camera-only perception**: No LiDAR. Metric depth is inferred from RGB via a neural network (Metric3D V2), conditioned on the camera intrinsics for metric scale.
 - **Modular, not end-to-end**: Each layer is independently replaceable. AI is injected only at the locomotion layer (Phase 3 RL policy), not throughout the stack. This preserves debuggability, multi-vehicle reuse, and open-source reference value.
 - **Vehicle-agnostic above the odometry boundary**: All platforms publish `nav_msgs/Odometry` + a traversability costmap. Elevation mapping, traversability, MPPI, and localization layers are shared across vehicle types. Only the odometry source and gait/drive controller differ per platform.
 - **Docker-first**: Every module has its own `Dockerfile` and `docker-compose.yaml`. No bare-metal ROS installs.
@@ -27,11 +27,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Phase | Milestone | Locomotion |
 |---|---|---|
-| **Phase 1** | Sim baseline: blind locomotion + elevation-map-aware routing | Fixed diagonal trot (analytic IK) |
+| **Phase 1** | Sim baseline: blind locomotion + elevation-map-aware routing | Bézier-swing trot (analytic IK, Spot Micro) |
 | **Phase 2** | Traversability-aware routing, real depth inference, real localization | Fixed trot + terrain cost |
 | **Phase 3** | Perceptive locomotion on real hardware; Isaac Lab RL policy | Perceptive RL policy (Isaac Lab → Jetson) |
 
-> Current state: **Phase 2** — offline video pipeline operational (video replay → DA-V2 depth → ORB-SLAM3 localization → GPU elevation mapping). Gazebo sim pipeline also functional. Step 5 (elevation map accumulation from offline video) is the active work item.
+> Current state: **Phase 2** — offline video pipeline operational (video replay → Metric3D V2 depth → ORB-SLAM3 localization → GPU elevation mapping). Gazebo sim pipeline also functional. Step 5 (elevation map accumulation from offline video) is the active work item.
 
 ---
 
@@ -70,6 +70,23 @@ docker compose --env-file depth-comparison.env \
 ```
 
 The `depth-comparison.env` profile sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (no EKF or ORB-SLAM3 — the comparison needs a TF tree, not drift correction), selects the deterministic `v0_geometry` simulation benchmark, and sets `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. `SIM_BENCHMARK_SEED=config` uses `random_seed: 42` from the scenario YAML. See `depth-comparison.env` for all variables.
+
+**Depth scale probe** (Alternative 1 — live ground-plane scale estimate against the production Metric3D node):
+```bash
+docker compose --env-file depth-scale-probe.env \
+  -f docker-compose-depth-scale-probe.yaml up -d --build
+```
+
+Runs `monocular_depth` (Metric3D V2, not the `depth_comparison` harness) on Gazebo's camera under `LOCALIZATION_MODE=ground_truth`, bridges its depth image to a point cloud via `depth_image_proc`, and feeds that to `ground_plane_estimation` with `GROUND_PLANE_HEIGHT_REFERENCE_FRAME=odom` — since `odom`'s z=0 plane is the true ground in this mode, `/ground_plane/scale` becomes a live per-frame estimate of Metric3D's depth scale error, no ground-truth depth image required. See `documentation/ground_plane_estimation.md` for the derivation.
+
+**Odometry scale probe** (Alternative 2 — the same scale estimated from motion instead of ground geometry):
+```bash
+docker compose --env-file odometry-scale-probe.env \
+  -f docker-compose-odometry-scale-probe.yaml up -d --build
+tmux attach -t quadruped_test_controller   # the probe needs motion to publish
+```
+
+Same Gazebo + Metric3D + `depth_image_proc` front end as Alternative 1, then `lidar_odometry` runs KISS-ICP on the *monocular* cloud (`/depth/points`) so `/odom_lidar` inherits its scale error, and `odometry_scale_estimation` compares that against `/odom_lko` from `quadruped_leg_odometry` — the ratio of the two motions is the depth scale. `pointcloud_scale_correction` closes the loop into `/depth/points_corrected`. The profile runs two estimate channels: `/odom_scale/odom_lidar/scale` is the measurement, and `/odom_scale/odom_ground_truth/scale` compares Gazebo's true motion against the same reference, so it should sit at 1.0 and its deviation is the reference's own error — the noise floor below which the measurement means nothing. Metric3D's ~0.75 Hz on this host is what KISS-ICP has to register across, so drive slowly. See `documentation/odometry_scale_estimation.md`.
 
 ### Inside Containers (ROS 2 Workspace)
 ```bash
@@ -146,7 +163,7 @@ The offline pipeline processes pre-recorded video files through the full percept
 ```
 video file → video_camera_sim → /camera/image_raw
                                     ↓
-                              monocular_depth (DA-V2) → /depth/image_raw
+                        monocular_depth (Metric3D V2) → /depth/image_raw
                                     ↓
                               depth_image_proc → /depth_camera/points
                                     ↓
@@ -168,12 +185,12 @@ docker compose --env-file offline-video.env up -d --build
 | `USE_SIM_TIME` | `true` | `false` |
 | `LOCALIZATION_MODE` | `slam` (dual-EKF) | `offline_video` (ORB-SLAM owns `map→base_link`) |
 | TF for `base_link→camera_link` | `robot_state_publisher` | Static TF from launch file |
-| Depth source | Ground-truth depth camera | Depth Anything V2 (monocular inference) |
+| Depth source | Ground-truth depth camera | Metric3D V2 (monocular inference) |
 | Elevation map frame | `odom` | `map` |
 
 ### Rules
 - **`offline-video.env` is the single source of truth** for the offline pipeline. All topic names, frame IDs, and mode switches are set there.
-- **`VIDEO_START_DELAY`** (default 20s) gives ORB-SLAM3 vocabulary and DA-V2 model time to load before video playback starts. Reduce only if models are pre-cached.
+- **`VIDEO_START_DELAY`** (default 20s) gives ORB-SLAM3 vocabulary and the Metric3D V2 model time to load before video playback starts. Reduce only if models are pre-cached.
 - **`VIDEO_LOOP=false`** — looping resets image motion while retaining the SLAM map, corrupting localization.
 - Every node runs with `use_sim_time: false` — wall-clock timestamps are used throughout.
 ---
@@ -185,7 +202,7 @@ The same pipeline runs against two sources. Do not hardcode either.
 | Role | Gazebo (Phase 1) | Real / bag (Phase 2+) |
 |---|---|---|
 | RGB image | `/front_camera/image_raw` | `/camera/image_raw` |
-| Depth image | `/depth_camera/image_raw` (ground truth) | `/depth/image_raw` (DA-V2 inferred) |
+| Depth image | `/depth_camera/image_raw` (ground truth) | `/depth/image_raw` (Metric3D V2 inferred) |
 | Camera info | `/depth_camera/camera_info` | `/camera/camera_info` |
 | Point cloud | `/depth_camera/points` | `/depth/points` |
  
@@ -193,7 +210,7 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
  
 > **Critical**: Gazebo depth is ground truth. Real depth is *inferred* and carries
 > scale/shift error that varies per frame. **Gazebo cannot validate the perception
-> stack.** Geometry, integration, and planning logic are testable in sim; DA-V2,
+> stack.** Geometry, integration, and planning logic are testable in sim; the depth network,
 > ORB-SLAM3, and real camera behaviour (auto-exposure, rolling shutter, motion
 > blur) require recorded footage via the offline video pipeline as a separate test bench.
  
@@ -208,8 +225,9 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
 ┌─────────────────────────────────────────────────────────────────┐
 │  PERCEPTION                                                     │
 │                                                                 │
-│  RGB Camera ──→ Depth Anything V2 ──→ /depth/image_raw         │
-│             └→ Metric3D V2        ──→ /depth/surface_normals   │
+│  RGB Camera + CameraInfo ──→ Metric3D V2 ──→ /depth/image_raw  │
+│                          (normals head not yet wired:           │
+│                           /depth/surface_normals is planned)    │
 │                                                                 │
 │  /depth/image_raw + /camera/camera_info                        │
 │    └──→ depth_image_proc ──→ /depth/points (PointCloud2)       │
@@ -236,7 +254,7 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
 ┌─────────────────────────────────────────────────────────────────┐
 │  LOCALIZATION                          (Phase 2+)               │
 │                                                                 │
-│  Gait Controller ──→ /odom_lko   (leg kinematics odometry)     │
+│  Leg Odometry (LKO) ──→ /odom_lko  (joint states + IMU)        │
 │  ORB-SLAM3 (RGBD) ──→ /odom_slam (loop-closure drift corr.)    │
 │                                                                 │
 │  robot_localization EKF                                        │
@@ -262,7 +280,7 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
 ┌─────────────────────────────────────────────────────────────────┐
 │  LOCOMOTION                                                     │
 │                                                                 │
-│  Phase 1–2: Fixed diagonal trot (analytic IK, 50 Hz)           │
+│  Phase 1–2: Bézier-swing trot (analytic IK, 100 Hz)           │
 │  Phase 3:   Perceptive RL policy (Isaac Lab → TensorRT/Jetson) │
 │               ← /cmd_vel + /elevation_map (proprioception)     │
 │               → /quadruped_joint_controller/commands           │
@@ -292,14 +310,15 @@ Two narrower entry points select a subset of the same module composes: `docker-c
 |---|---|---|---|
 | `quadruped_gazebo` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Physics sim, robot spawn, sensor publishing |
 | `rviz` | `osrf/ros:jazzy-desktop-full` | 1+ | Standalone visualization for simulation and offline pipelines |
-| `monocular_depth` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 2+ | Depth Anything V2 + Metric3D V2 → depth + normals |
+| `monocular_depth` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 2+ | Metric3D V2 → metric depth |
 | `depth_comparison` | `nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04` | 2+ | N depth models on identical frames → depth + cloud per model |
 | `depth_image_proc` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Depth → point cloud conversion |
 | `elevation_mapping_cupy` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 1+ | GPU elevation mapping |
 | `traversability_estimation` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 2+ | Slope/roughness/step costmap from elevation map |
 | `localization` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 2+ | ORB-SLAM3 + LKO → robot_localization EKF |
+| `lidar_odometry` | `osrf/ros:jazzy-desktop-full` | 2+ | KISS-ICP LiDAR odometry → `/odom_lidar` (metric reference / multi-vehicle odom source) |
 | `nav2_mppi_navigation` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Nav2 + MPPI, traversability costmap consumer |
-| `quadruped_gait_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1–2 | Analytic IK + diagonal trot; publishes LKO |
+| `quadruped_gait_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1–2 | Spot Micro Bézier-swing trot/crawl + whole-body IK; joint commands only |
 | `quadruped_rl_controller` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 3 | TensorRT perceptive RL policy from Isaac Lab |
 | `quadruped_test_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Keyboard teleop |
 | `video_camera_sim` | `ros:jazzy-ros-base` | 2+ | Plays pre-recorded video as camera topics for offline testing |
@@ -340,10 +359,10 @@ Video Camera Sim (offline testing, replaces live camera)
   → /camera/image_raw     (sensor_msgs/Image, BGR8)
   → /camera/camera_info   (sensor_msgs/CameraInfo)
 
-Monocular Depth (Depth Anything V2 + Metric3D V2)
-  ← /camera/image_raw
+Monocular Depth (Metric3D V2)
+  ← /camera/image_raw + /camera/camera_info  (intrinsics = metric scale)
   → /depth/image_raw      (metric, in metres)
-  → /depth/surface_normals (sensor_msgs/Image, 3-channel XYZ)
+  → /depth/surface_normals (planned; Metric3D's normal head is not wired yet)
 
 Depth Image Proc
   ← /depth/image_raw + /camera/camera_info
@@ -374,20 +393,26 @@ Gait Controller (Phase 1–2) / RL Policy (Phase 3)
   ← /cmd_vel
   ← /elevation_map  (Phase 3 only: foothold-aware)
   → /quadruped_joint_controller/commands
-  → /odom_lko  (leg kinematics odometry, published by gait controller)
+  → /quadruped_joint_controller/commands only — /odom_lko is published
+    by quadruped_leg_odometry (joint states + IMU), not by this node
 ```
 
 ---
 
 ## Key Source Files
 
-- `src/quadruped_gait_controller/quadruped_gait_controller/gait_node.py` — Diagonal trot gait with analytic 3-DOF IK. Publishes `/odom_lko` (leg kinematics odometry) in addition to joint commands. Phase A (0–0.5): FL+RR swing; Phase B: FR+RL swing. 50 Hz, 0.4s stride, 15mm step height.
-- `src/quadruped_gazebo/urdf/quadruped.urdf.xacro` — Robot URDF: 12 joints (hip_roll, hip_pitch, knee per leg), depth camera, IMU, RGB camera.
+- `src/quadruped_kinematics/` — Spot Micro geometry (`SPOT_MICRO`: 0.186 × 0.078 m hip pivots, 55 mm hip link, 107.5 mm upper leg, 130 mm lower leg), closed-form leg IK/FK/Jacobian and whole-body IK (body pose over fixed footholds). Pure numpy, shared by the gait controller and leg odometry; its tests parse the URDF xacro and fail if the numbers diverge. Joint order contract: `JOINT_ORDER`.
+- `src/quadruped_gait_controller/` — Spot Micro gait node (`gait_node.py` + pure-python `gait.py`). Consumes `/cmd_vel`, publishes joint commands only — leg kinematics odometry (`/odom_lko`) comes from `src/quadruped_leg_odometry/`, not this node. Bézier-swing gait (Hyun et al. 2014 curve) with per-leg stride vectors (`v + ω × r`, so yaw = tangential strides), `trot` (0.4 s cycle, duty 0.7, 20 mm lift; default) or `walk` (1.0 s crawl, duty 0.75, body shifted into the support triangle). A zero command finishes the cycle before standing. All tuning is ROS parameters (`config/gait_params.yaml`); per-gait defaults live in `GAIT_LIBRARY`. Validated headless in Gazebo: straight at 0.2–0.3 m/s with <2° roll/pitch, turns at the commanded rate. A duty-0.5 flight trot falls under position control — don't go back to it.
+- `src/quadruped_gazebo/urdf/quadruped.urdf.xacro` — Spot Micro URDF: 12 joints (hip_roll, hip_pitch, knee per leg; all knees backward), 2.82 kg, 3.4 N·m / 7 rad/s servo limits, depth camera, IMU, RGB camera. The stand pose (`initial_value`) is derived from the geometry and `stand_height` (0.16 m) so the robot spawns standing; link lengths must match `quadruped_kinematics` (tested). `gazebo.launch.py headless:=true` runs the server only (CI / no display).
 - `src/quadruped_gazebo/config/ros2_control.yaml` — JointGroupPositionController mapping for all 12 joints.
 - `src/quadruped_gazebo/launch/gazebo.launch.py` — Spawns robot, loads controllers, starts ROS-Gazebo bridges.
 - `src/video_camera_sim/` — Plays pre-recorded video files as `/camera/image_raw` + `/camera/camera_info` for offline testing of perception and localization pipelines. Configurable FPS, loop, and camera intrinsics.
-- `src/monocular_depth/` — (Phase 2) Depth Anything V2 + Metric3D V2 inference node. TensorRT FP16 export for Jetson. Publishes metric depth and surface normals.
-- `src/depth_comparison/` — Runs N depth backends on the *same* RGB frame and publishes one metric depth image + point cloud per model under `/depth_compare/<key>/`. Backends: Gazebo depth sensor (relay reference), Depth Anything V2 (VKITTI + Hypersim checkpoints), Metric3D V2. Add a model by implementing `DepthBackend` and registering it in `backends/__init__.py`. Contains `compat/mmcv/`, a deliberate mmengine-backed shim for Metric3D's mmcv 1.x imports.
+- `src/monocular_depth/` — (Phase 2) Metric3D V2 inference node — the production depth source. Intrinsics-conditioned, so it needs CameraInfo and drops frames until one arrives. TensorRT FP16 export for Jetson is still to come.
+- `src/depth_comparison/` — Runs N depth backends on the *same* RGB frame and publishes one metric depth image + point cloud per model under `/depth_compare/<key>/`. Backends: Gazebo depth sensor (relay reference), Depth Anything V2 (VKITTI + Hypersim checkpoints), Metric3D V2. Add a model by implementing `DepthBackend` and registering it in `backends/__init__.py`. Shares the repo-root `compat/mmcv/` shim (a deliberate mmengine-backed stand-in for Metric3D's mmcv 1.x imports) with `monocular_depth`; both images therefore build from the repository root, not their own directory.
+- `src/lidar_odometry/` — KISS-ICP LiDAR odometry from any `PointCloud2`; publishes `/odom_lidar` (`odom`→`base_link`, twist in `base_link`, drift-model covariance). Pure-lidar on purpose (sensor-agnostic, no IMU sync): the metric reference for the monocular scale work (Alternative 2) and an odometry source for lidar-equipped platforms of the vehicle contract. No TF by default (EKF owns `odom→base_link`). See `documentation/lidar_odometry.md` for the full algorithm survey (KISS-ICP vs. FAST-LIO2/Point-LIO/DLIO/LIO-SAM) and rationale.
+- `src/ground_plane_estimation/` — RANSAC ground plane from any depth point cloud; publishes `/ground_plane[/<key>]/{distance,camera_height,scale,marker}`. The kinetic scale-hypothesis probe: with a height reference (`odom` z=0 in ground-truth sim, or a nominal standing height), `scale` = camera-to-plane distance / expected camera height ≈ per-frame monocular depth scale factor. One estimator per input topic; pairs with the depth comparison channels via `GROUND_PLANE_INPUT_TOPICS`.
+- `src/pointcloud_scale_correction/` — Applies the ground-plane scale estimate back onto the point cloud: subscribes a `PointCloud2` + `/ground_plane/scale` (Float32), republishes `<input>_corrected` with the original header (frame + stamp untouched) plus `<output>/applied_scale`. Error model is pluggable (`correction_models.py`, pure numpy): `scalar` (`p/s`, default) or `affine` (`(z−b)/s` along each ray, camera-optical frame required) — switching is the `model` parameter (`odometry_scale_estimation`'s affine mode publishes a shift, but it is a displacement-space diagnostic, not the depth-space `b` — see that module's README before wiring it in). Estimates are EMA/median-smoothed and gated; `stale_policy` (hold/passthrough/drop) governs gaps. One node per input topic via `SCALE_CORRECTION_INPUT_TOPICS`, pairing with the depth comparison channels like `ground_plane_estimation`.
+- `src/odometry_scale_estimation/` — The second kinetic probe (Alternative 2): compares a metric odometry stream (`/odom_lko`, leg kinematics + IMU) against a scale-bearing one (`/odom_lidar` — KISS-ICP fed the monodepth cloud via `LIDAR_POINTCLOUD_TOPIC=/depth/points`) over a sliding window (default 5 s) and publishes `/odom_scale[/<key>]/{scale,shift,residual,ref_motion,marker}`. Compares matched displacement chords (frame-invariant, so no extrinsic alignment; reference interpolated at estimate stamps), fit models pluggable in `trajectory_compare.py` (pure numpy): `scalar` (`chord_est = s·chord_ref`, default) or `affine` (`… + b`; needs chord-length spread, else rejected). Raw per-window output — smoothing/gating live in `pointcloud_scale_correction`, same contract as the ground-plane probe. Publishes nothing while standing (`min_motion` excitation gate); `ref_motion` distinguishes "standing" from "broken". See `documentation/odometry_scale_estimation.md`.
 - `src/elevation_mapping_cupy_pkg/` — GPU elevation map (3m×3m, 5cm resolution, 2 Hz). Ingests point cloud + surface normals for covariance-weighted fusion. Vendored `elevation_mapping_cupy` repo.
 - `src/traversability_estimation/` — (Phase 2) Computes traversability costmap from elevation map: slope angle, roughness (height variance), step height against leg reach limits. Publishes `nav_msgs/OccupancyGrid`.
 - `src/localization/` — (Phase 2) ORB-SLAM3 in RGBD mode (monocular depth as D channel) + `robot_localization` EKF fusing LKO + SLAM + IMU. LKO is the primary short-horizon source; SLAM provides loop-closure drift correction.
@@ -426,7 +451,7 @@ LKO is the fallback when vision degrades. SLAM loop closure corrects accumulated
 
 | Phase | Approach | Tradeoffs |
 |---|---|---|
-| 1–2 | Fixed diagonal trot, analytic IK | Simple, reliable on flat/mildly uneven terrain; no terrain adaptation |
+| 1–2 | Bézier-swing trot / crawl, analytic whole-body IK (Spot Micro) | Simple, reliable on flat/mildly uneven terrain; open-loop, no terrain adaptation |
 | 3 | Perceptive RL policy (Isaac Lab → TensorRT) | Graceful degradation on noisy monocular depth; zero-shot Jetson Orin transfer via NVIDIA-documented path; requires Isaac Lab training infrastructure |
 
 **Why RL over OCS2 MPC for Phase 3**: MPC-based foothold planning (e.g. `legged_perceptive`) requires accurate terrain geometry — sensitive to depth noise from monocular estimation. RL policies trained with domain randomization in Isaac Lab are more robust to noisy inputs, and NVIDIA provides a documented sim-to-real transfer path directly to Jetson Orin hardware.
@@ -450,9 +475,50 @@ To add a new platform, implement the vehicle interface contract (see above) and 
 
 1. Create `src/<module>/` with `package.xml`, `docker-compose.yaml`, and either `CMakeLists.txt` (C++) or `setup.py` (Python).
 2. Choose base image: `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` (CPU) or `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` (GPU/inference).
-3. Add `include: - path: src/<module>/docker-compose.yaml` to root `docker-compose.yaml`.
-4. Add the container name to the `CONTAINERS` array in `tmux-attach.sh`.
-5. Add at least one launch smoke test (node starts, required topics appear within 10s).
+3. **Give the Dockerfile a non-root `USER` matching the host UID/GID** — see [Non-Root Container User](#non-root-container-user-required) below. Not optional: every module that bind-mounts the repo into `/work/ws` and runs `colcon build` there shares that mount with every other module's container, and a root-running container poisons the shared `log/`/`build`/`install/` dirs for everyone else.
+4. Add `include: - path: src/<module>/docker-compose.yaml` to root `docker-compose.yaml`.
+5. Add the container name to the `CONTAINERS` array in `tmux-attach.sh`.
+6. Add at least one launch smoke test (node starts, required topics appear within 10s).
+
+### Non-Root Container User (required)
+
+Every module's Dockerfile bind-mounts the repo root to `/work/ws` and (usually) runs `colcon build` there against the same host directory every other module also builds into. If one container runs as root and another as a non-root user, whichever's `colcon build` claims a given `log/build_<timestamp>` directory first sets its ownership, and the other gets `PermissionError: [Errno 13]` writing its own log. **Every Dockerfile must end with a non-root `USER` whose UID/GID matches the host** (default 1000:1000), no exceptions — including modules that don't build anything against the shared mount, since the next thing added to that Dockerfile might.
+
+Copy this block verbatim (adjust only if the module's base image already ships a `USER_UID`-matching user under a different flow — check with `id -u`/`id -g` before deviating):
+
+```dockerfile
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# ... apt installs etc. must include `sudo` in the package list ...
+
+# Non-root user matching host UID/GID. Guard on id -u: Ubuntu 24.04 base
+# images already ship a UID-1000 "ubuntu" user, so useradd is a no-op there
+# — do not assume it always runs.
+RUN if ! getent group ${USER_GID} >/dev/null; then groupadd --gid ${USER_GID} ${USERNAME}; fi \
+    && if ! id -u ${USERNAME} >/dev/null 2>&1; then useradd -m -s /bin/bash --uid ${USER_UID} --gid ${USER_GID} ${USERNAME}; fi \
+    && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
+    && chmod 0440 /etc/sudoers.d/${USERNAME}
+
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc
+
+WORKDIR /work/ws
+USER ${USERNAME}
+```
+
+If the module needs `/dev/dri` (any GUI/GPU-rendering container, e.g. `quadruped_gazebo`), also join the host's `video`/`render` groups — **use `usermod -aG`, not `useradd -G`**, because the `useradd` step above is frequently skipped (base image already has the user) and `-G` on a skipped `useradd` silently does nothing:
+
+```dockerfile
+ARG VIDEO_GID=44
+ARG RENDER_GID=109
+# ...inside the same RUN block, after ensuring the groups/user exist above...
+    && usermod -aG $(getent group ${VIDEO_GID} | cut -d: -f1),$(getent group ${RENDER_GID} | cut -d: -f1) ${USERNAME} \
+```
+
+Check the actual host GIDs with `getent group video render` before trusting the 44/109 defaults — they're Debian/Ubuntu conventional but not guaranteed.
+
+Exceptions: a container that mounts the workspace `:ro` and never runs `colcon build` against it (e.g. `rviz`) doesn't participate in the race and doesn't strictly need this — but add it anyway unless there's a specific reason not to, so the whole repo stays consistent.
 
 ---
 
@@ -481,6 +547,8 @@ To add a new platform, implement the vehicle interface contract (see above) and 
 | `POINTCLOUD_TOPIC` | `/depth_camera/points` | Point cloud topic for elevation mapping |
 | `MAP_FRAME_ID` | `map` | Elevation map fixed frame |
 | `FRAME_ID` | `camera_link_optical` | Camera frame for video publisher |
+| `INPUT_CAMERA_INFO_TOPIC` | `/camera/camera_info` | Intrinsics for Metric3D; empty resolves alongside the image topic |
+| `FX` / `FY` / `CX` / `CY` | video_camera_sim defaults | **Set these to the recording camera's real calibration.** Metric3D derives metric scale from `fx`, so a wrong value scales all depth (and the point cloud) by the same factor |
 
 ### Depth Comparison Profile (`depth-comparison.env`)
 
@@ -505,6 +573,7 @@ Rules:
 - **`max_depth` is not a free parameter** for Depth Anything V2. Its metric head ends in `sigmoid(x) * max_depth`, so the value is a trained-in output scale — raising Hypersim's 20 m to cover an outdoor scene multiplies every prediction by 4.
 - **A backend that fails to load is dropped, not fatal.** The node aborts only if every channel fails. Check startup logs for `unavailable, dropping it` before trusting a comparison.
 - Metric3D reaches ~1167 ms/frame on an RTX 2060 against ~300 ms for the DA-V2 models; all three together run at roughly 0.55 Hz.
+- The same cost applies to the production `monocular_depth` node now that it runs Metric3D: measured ~1.2–1.5 s/frame at 640×480 on this host, so its `target_fps` (default 10 Hz) is an upper bound it will not reach — the node simply drops what it cannot keep up with. Expect roughly 4× fewer point clouds reaching elevation mapping than under DA-V2, and budget accordingly on Orin.
 
 ---
 
@@ -513,7 +582,7 @@ Rules:
 - **Stereo trade-off**: NVIDIA Isaac ROS (`isaac_ros_dnn_stereo_depth`, cuVSLAM, FoundationStereo) is significantly richer for stereo pairs. If a second camera is affordable, stereo should be reconsidered before committing to monocular-only.
 - **MPPI motion model**: Currently `Omni` for holonomic quadruped motion. Tune `vy_max` to match actual lateral gait speed.
 - **Traversability costmap resolution**: 5cm grid at 3m×3m is appropriate for indoor/controlled outdoor. Expand to 10m×10m for open terrain but watch GPU memory on Orin Nano.
-- **ORB-SLAM3 monocular scale**: In `MONOCULAR` mode, ORB-SLAM3 scale is metric-consistent only if Depth Anything V2 output is metric-accurate. In `RGBD` mode with monocular depth as the D channel, scale comes from the depth network. Validate carefully on real hardware.
+- **ORB-SLAM3 monocular scale**: In `MONOCULAR` mode, ORB-SLAM3 scale is metric-consistent only if the monocular depth output is metric-accurate. In `RGBD` mode with monocular depth as the D channel, scale comes from the depth network. Validate carefully on real hardware.
 - **Elevation map frame in offline mode**: Using `map` frame works when ORB-SLAM3 drift is small. For longer sequences with loop closures, the map frame may have discontinuities that affect elevation map coherence.
 - **QGroundControl integration**: Planned. Requires MAVLink bridge (`MAVROS` or `px4_ros_com`) publishing mission waypoints as `nav2_msgs/action/NavigateThroughPoses`.
 
@@ -526,10 +595,19 @@ Now the pipeline is working. But Depth Anything V2 has a huge scale problem. I w
 
 - [x] Step 0: DepthAnything V2.
 - [x] Step 00: ROS Depth Sensor module
-- [ ] Step 1: DAV2 VKITTI
-- [ ] Step 2: DAV2 Hypersim
-- [ ] Step 3: Metric3D-v2-S
+- [X] Step 1: DAV2 VKITTI
+- [X] Step 2: DAV2 Hypersim
+- [X] Step 3: Metric3D-v2-S
 
 I'll thest these in two phases:
 - [] Phase 1: ROS2 Gazebo <-- We are here
 - [] Phase 2: On pre-recorded (iphone) videos
+
+Seems like Metric3D is currently the closest alternative.
+
+We will take a detour. I'll try if I can solve the depth problem kinetically. I have two alternatives
+ - [ ] Alternative 1: Solve it via ground plane distance
+ - [ ] Alternative 2: Use IMU and leg odometry to estimate the motion and compare it to the motion of inferred with monodepth pointcloud.
+
+ Alternative 1 launch - docker compose --env-file depth-scale-probe.env   -f docker-compose-depth-scale-probe.yaml up -d
+ Alternative 2 launch - docker compose --env-file odometry-scale-probe.env   -f docker-compose-odometry-scale-probe.yaml up -d 

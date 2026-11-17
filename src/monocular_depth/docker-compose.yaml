@@ -1,15 +1,15 @@
-version: "3.9"
-
 services:
   monocular_depth:
     image: monocular-depth:jazzy
     container_name: monocular_depth
     build:
-      context: .
-      dockerfile: Dockerfile
+      # Repository root, not this directory: the image needs the shared
+      # compat/mmcv shim, which depth_comparison builds from as well.
+      context: ../..
+      dockerfile: src/monocular_depth/Dockerfile
       args:
         ROS_DISTRO: jazzy
-        MODEL_TYPE: vits
+        METRIC3D_MODEL: metric3d_vit_small
 
     runtime: nvidia
     environment:
@@ -32,10 +32,13 @@ services:
 
       # Depth node parameters
       - INPUT_IMAGE_TOPIC=${INPUT_IMAGE_TOPIC:-/camera/image_raw}
+      # Empty = the camera_info alongside INPUT_IMAGE_TOPIC. Metric3D needs it
+      # for metric scale, so the node drops frames until one arrives.
+      - INPUT_CAMERA_INFO_TOPIC=${INPUT_CAMERA_INFO_TOPIC:-}
       - OUTPUT_DEPTH_TOPIC=${OUTPUT_DEPTH_TOPIC:-/depth/image_raw}
       - OUTPUT_CAMERA_INFO_TOPIC=${OUTPUT_CAMERA_INFO_TOPIC:-/depth/camera_info}
-      - MODEL_TYPE=${MODEL_TYPE:-vits}
-      - MAX_DEPTH=${MAX_DEPTH:-80.0}
+      - MODEL_NAME=${MODEL_NAME:-metric3d_vit_small}
+      - MAX_DEPTH=${MAX_DEPTH:-300.0}
       - TARGET_FPS=${TARGET_FPS:-10.0}
       - DEVICE=${DEVICE:-cuda}
       - USE_SIM_TIME=${USE_SIM_TIME:-false}
@@ -64,5 +67,6 @@ services:
         source /opt/ros/$${ROS_DISTRO}/setup.bash;
         colcon build --symlink-install --packages-select monocular_depth;
         source /work/ws/install/setup.bash;
-        ros2 launch monocular_depth depth.launch.py input_image_topic:=$${INPUT_IMAGE_TOPIC} output_depth_topic:=$${OUTPUT_DEPTH_TOPIC} output_camera_info_topic:=$${OUTPUT_CAMERA_INFO_TOPIC} model_type:=$${MODEL_TYPE} max_depth:=$${MAX_DEPTH} target_fps:=$${TARGET_FPS} device:=$${DEVICE} use_sim_time:=$${USE_SIM_TIME}
+        : $${INPUT_CAMERA_INFO_TOPIC:=$${INPUT_IMAGE_TOPIC%/*}/camera_info};
+        ros2 launch monocular_depth depth.launch.py input_image_topic:=$${INPUT_IMAGE_TOPIC} input_camera_info_topic:=$${INPUT_CAMERA_INFO_TOPIC} output_depth_topic:=$${OUTPUT_DEPTH_TOPIC} output_camera_info_topic:=$${OUTPUT_CAMERA_INFO_TOPIC} model_name:=$${MODEL_NAME} max_depth:=$${MAX_DEPTH} target_fps:=$${TARGET_FPS} device:=$${DEVICE} use_sim_time:=$${USE_SIM_TIME}
       "

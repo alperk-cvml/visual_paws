@@ -14,6 +14,9 @@ services:
       # ROS
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      # trot | walk (see config/gait_params.yaml for everything else)
+      - GAIT_TYPE=${GAIT_TYPE:-trot}
 
     volumes:
       # ROS 2 workspace
@@ -25,11 +28,17 @@ services:
     network_mode: host
     ipc: host
 
-    command: >
-      bash -lc "
-        set -e;
-        source /opt/ros/$${ROS_DISTRO}/setup.bash;
-        colcon build --symlink-install --packages-select quadruped_gait_controller;
-        source /work/ws/install/setup.bash;
-        ros2 launch quadruped_gait_controller gait.launch.py
-      "
+    # List form on purpose — see src/depth_comparison/docker-compose.yaml for
+    # why a single-string command would split the launch arguments onto their
+    # own lines and run `ros2 launch` bare.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-up-to quadruped_gait_controller
+        source /work/ws/install/setup.bash
+        ros2 launch quadruped_gait_controller gait.launch.py \
+          use_sim_time:=$${USE_SIM_TIME} \
+          gait_type:=$${GAIT_TYPE}

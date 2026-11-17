@@ -1,9 +1,9 @@
-# ros2_control configuration for quadruped robot
-# Hardware plugin: gz_ros2_control/GazeboSimSystem  (Gazebo Harmonic)
+# ros2_control configuration for the Spot Micro quadruped
+# Hardware plugin: gz_ros2_control/GazeboSimSystem (Gazebo Harmonic)
 
 controller_manager:
   ros__parameters:
-    update_rate: 1000  # Hz
+    update_rate: 500  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -11,8 +11,18 @@ controller_manager:
     quadruped_joint_controller:
       type: position_controllers/JointGroupPositionController
 
+# gz_ros2_control tracks a position command by commanding a joint velocity of
+# position_proportional_gain * error * update_rate. 0.1 at 500 Hz is a 50 /s
+# velocity loop (20 ms time constant), a fair stand-in for a hobby servo's
+# internal position loop; the URDF effort limit caps the resulting torque.
+gz_ros2_control:
+  ros__parameters:
+    position_proportional_gain: 0.1
+
 quadruped_joint_controller:
   ros__parameters:
+    # Order is the contract with quadruped_kinematics.JOINT_ORDER and the
+    # gait controller's Float64MultiArray layout.
     joints:
       - FL_hip_roll_joint
       - FL_hip_pitch_joint

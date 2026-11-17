@@ -3,8 +3,10 @@ services:
     image: depth-comparison:jazzy
     container_name: depth_comparison
     build:
-      context: .
-      dockerfile: Dockerfile
+      # Repository root, not this directory: the image needs the shared
+      # compat/mmcv shim, which monocular_depth builds from as well.
+      context: ../..
+      dockerfile: src/depth_comparison/Dockerfile
       args:
         ROS_DISTRO: jazzy
         DAV2_ENCODER: vits
@@ -42,19 +44,27 @@ services:
     network_mode: host
     ipc: host
 
-    command: >
-      bash -lc "
-        set -e;
-        source /opt/ros/$${ROS_DISTRO}/setup.bash;
-        colcon build --symlink-install --packages-select depth_comparison;
-        source /work/ws/install/setup.bash;
-        ros2 launch depth_comparison depth_comparison.launch.py
-          input_image_topic:=$${COMPARE_INPUT_IMAGE_TOPIC}
-          input_camera_info_topic:=$${COMPARE_INPUT_CAMERA_INFO_TOPIC}
-          backends:=$${COMPARE_BACKENDS}
-          output_namespace:=$${COMPARE_NAMESPACE}
-          target_fps:=$${COMPARE_TARGET_FPS}
-          publish_pointclouds:=$${COMPARE_PUBLISH_POINTCLOUDS}
-          device:=$${DEVICE}
+    # List form on purpose. Given a single string, Compose splits it with a
+    # shell-like lexer *before* the container sees it, and that lexer eats the
+    # `\` of a `\`-newline continuation while keeping the newline — so the
+    # launch arguments below would end up on their own lines and `ros2 launch`
+    # would run bare, silently falling back to config/backends.yaml and
+    # ignoring this profile's env file. The list form skips that lexer, so the
+    # continuations reach bash intact.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-select depth_comparison
+        source /work/ws/install/setup.bash
+        ros2 launch depth_comparison depth_comparison.launch.py \
+          input_image_topic:=$${COMPARE_INPUT_IMAGE_TOPIC} \
+          input_camera_info_topic:=$${COMPARE_INPUT_CAMERA_INFO_TOPIC} \
+          backends:=$${COMPARE_BACKENDS} \
+          output_namespace:=$${COMPARE_NAMESPACE} \
+          target_fps:=$${COMPARE_TARGET_FPS} \
+          publish_pointclouds:=$${COMPARE_PUBLISH_POINTCLOUDS} \
+          device:=$${DEVICE} \
           use_sim_time:=$${USE_SIM_TIME}
-      "

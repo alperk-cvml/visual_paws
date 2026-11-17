@@ -1,0 +1,46 @@
+# Live depth-scale probe — Alternative 1 from AGENTS.md's Current Target
+# ("solve it via ground plane distance"), run against the actual production
+# monocular_depth node instead of the N-channel depth_comparison harness.
+#
+# Usage:
+#   xhost +local:docker                      # once per login, for the GUIs
+#   docker compose --env-file depth-scale-probe.env \
+#     -f docker-compose-depth-scale-probe.yaml up -d --build
+#
+# Drive the robot to vary the viewpoint:
+#   tmux attach -t quadruped_test_controller   # W/A/S/D, Q/E rotate, ESC quit
+#
+# Pipeline: quadruped_gazebo (ground-truth localisation, deterministic V0
+# benchmark) -> monocular_depth (Metric3D V2 on /front_camera/image_raw) ->
+# depth_image_proc (depth image -> /depth/points) -> ground_plane_estimation
+# (RANSAC ground plane -> /ground_plane/scale). With LOCALIZATION_MODE=
+# ground_truth, `odom`'s z=0 plane is the true ground, so
+# GROUND_PLANE_HEIGHT_REFERENCE_FRAME=odom turns /ground_plane/scale into a
+# live estimate of Metric3D's per-frame depth scale error with no
+# ground-truth depth image involved.
+#
+# depth_image_proc is the one addition beyond the module list this profile
+# was asked for: ground_plane_estimation consumes PointCloud2, and
+# monocular_depth only publishes a depth image, so something has to bridge
+# them — see CLAUDE.md's pipeline diagram (monocular depth -> depth_image_proc
+# -> elevation mapping) for the same pattern elsewhere in the stack.
+#
+# Core services are quadruped_gazebo, monocular_depth, depth_image_proc,
+# ground_plane_estimation and rviz. The two controllers only exist so you can
+# move the robot around; start a subset with
+#   docker compose --env-file depth-scale-probe.env \
+#     -f docker-compose-depth-scale-probe.yaml up \
+#     quadruped_gazebo monocular_depth depth_image_proc ground_plane_estimation rviz
+
+include:
+  - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/monocular_depth/docker-compose.yaml
+  - path: src/dept_image_proc/docker-compose.yaml
+  - path: src/ground_plane_estimation/docker-compose.yaml
+  # Closes the loop: applies /ground_plane/scale back onto /depth/points,
+  # republishing /depth/points_corrected for side-by-side RViz comparison.
+  - path: src/pointcloud_scale_correction/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
+  # Teleop chain: keyboard -> /cmd_vel -> joint commands. Optional.
+  - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_test_controller/docker-compose.yaml

@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  lidar_odometry:
+    image: lidar-odometry:jazzy
+    container_name: lidar_odometry
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      # Any PointCloud2 works: a lidar driver, a bag replay, or (for
+      # experiments) a depth-camera cloud. Override per profile.
+      - LIDAR_POINTCLOUD_TOPIC=${LIDAR_POINTCLOUD_TOPIC:-/lidar/points}
+      - LIDAR_ODOM_TOPIC=${LIDAR_ODOM_TOPIC:-/odom_lidar}
+      - LIDAR_MAX_RANGE=${LIDAR_MAX_RANGE:-30.0}
+      - LIDAR_MIN_RANGE=${LIDAR_MIN_RANGE:-0.3}
+      # Motion compensation needs a per-point time field in the cloud.
+      - LIDAR_DESKEW=${LIDAR_DESKEW:-false}
+      # odom->base_link belongs to the EKF / ground-truth publisher.
+      - LIDAR_ODOM_PUBLISH_TF=${LIDAR_ODOM_PUBLISH_TF:-false}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    # List form on purpose — see src/depth_comparison/docker-compose.yaml for
+    # why a single-string command would split the launch arguments onto their
+    # own lines and run `ros2 launch` bare.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-select lidar_odometry
+        source /work/ws/install/setup.bash
+        ros2 launch lidar_odometry lidar_odometry.launch.py \
+          use_sim_time:=$${USE_SIM_TIME} \
+          input_topic:=$${LIDAR_POINTCLOUD_TOPIC} \
+          odom_topic:=$${LIDAR_ODOM_TOPIC} \
+          max_range:=$${LIDAR_MAX_RANGE} \
+          min_range:=$${LIDAR_MIN_RANGE} \
+          deskew:=$${LIDAR_DESKEW} \
+          publish_tf:=$${LIDAR_ODOM_PUBLISH_TF}

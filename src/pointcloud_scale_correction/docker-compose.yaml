@@ -1,0 +1,79 @@
+version: "3.9"
+
+services:
+  pointcloud_scale_correction:
+    image: pointcloud-scale-correction:jazzy
+    container_name: pointcloud_scale_correction
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+
+    environment:
+      # ROS
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      # Comma-separated clouds; one correction node per topic. Pairs 1:1
+      # with SCALE_TOPICS (or one shared scale topic for all).
+      - SCALE_CORRECTION_INPUT_TOPICS=${SCALE_CORRECTION_INPUT_TOPICS:-/depth_camera/points}
+      - SCALE_CORRECTION_SCALE_TOPICS=${SCALE_CORRECTION_SCALE_TOPICS:-/ground_plane/scale}
+      # Optional shift estimates (affine model only). odometry_scale_estimation
+      # publishes /odom_scale/shift, but it is a displacement-space diagnostic,
+      # not the depth-space b this model divides out — see its README first.
+      - SCALE_CORRECTION_SHIFT_TOPICS=${SCALE_CORRECTION_SHIFT_TOPICS:-}
+      # Empty derives `<input_topic>_corrected` per input.
+      - SCALE_CORRECTION_OUTPUT_TOPICS=${SCALE_CORRECTION_OUTPUT_TOPICS:-}
+      # Error model: scalar (p/s) or affine ((z-b)/s along each ray).
+      - SCALE_CORRECTION_MODEL=${SCALE_CORRECTION_MODEL:-scalar}
+      # Estimate smoothing: none | ema | median.
+      - SCALE_CORRECTION_SMOOTHING=${SCALE_CORRECTION_SMOOTHING:-ema}
+      - SCALE_CORRECTION_EMA_ALPHA=${SCALE_CORRECTION_EMA_ALPHA:-0.2}
+      - SCALE_CORRECTION_MEDIAN_WINDOW=${SCALE_CORRECTION_MEDIAN_WINDOW:-5}
+      # Seconds before an estimate goes stale (0 disables), and what to do
+      # without a fresh one: hold | passthrough | drop.
+      - SCALE_CORRECTION_ESTIMATE_TIMEOUT=${SCALE_CORRECTION_ESTIMATE_TIMEOUT:-5.0}
+      - SCALE_CORRECTION_STALE_POLICY=${SCALE_CORRECTION_STALE_POLICY:-hold}
+
+    volumes:
+      # ROS 2 workspace
+      - ../..:/work/ws:rw
+
+    working_dir: /work/ws
+
+    # Host networking for seamless ROS 2 DDS discovery with the simulation
+    network_mode: host
+    ipc: host
+
+    # List form on purpose — see src/depth_comparison/docker-compose.yaml for
+    # why a single-string command would split the launch arguments onto their
+    # own lines and run `ros2 launch` bare.
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        source /opt/ros/$${ROS_DISTRO}/setup.bash
+        colcon build --symlink-install --packages-select pointcloud_scale_correction
+        source /work/ws/install/setup.bash
+        # ros2 launch rejects a trailing `name:=` with no value, so optional
+        # args (shift_topics, output_topics) are only appended when set.
+        args=(
+          input_topics:=$${SCALE_CORRECTION_INPUT_TOPICS}
+          scale_topics:=$${SCALE_CORRECTION_SCALE_TOPICS}
+          model:=$${SCALE_CORRECTION_MODEL}
+          smoothing:=$${SCALE_CORRECTION_SMOOTHING}
+          ema_alpha:=$${SCALE_CORRECTION_EMA_ALPHA}
+          median_window:=$${SCALE_CORRECTION_MEDIAN_WINDOW}
+          estimate_timeout:=$${SCALE_CORRECTION_ESTIMATE_TIMEOUT}
+          stale_policy:=$${SCALE_CORRECTION_STALE_POLICY}
+          use_sim_time:=$${USE_SIM_TIME}
+        )
+        if [ -n "$${SCALE_CORRECTION_SHIFT_TOPICS}" ]; then
+          args+=(shift_topics:=$${SCALE_CORRECTION_SHIFT_TOPICS})
+        fi
+        if [ -n "$${SCALE_CORRECTION_OUTPUT_TOPICS}" ]; then
+          args+=(output_topics:=$${SCALE_CORRECTION_OUTPUT_TOPICS})
+        fi
+        ros2 launch pointcloud_scale_correction scale_correction.launch.py "$${args[@]}"

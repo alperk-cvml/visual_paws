@@ -23,6 +23,8 @@
 include:
   - path: src/quadruped_gazebo/docker-compose.yaml
   - path: src/depth_comparison/docker-compose.yaml
+  # Per-channel ground plane distance + scale estimate (scale hypothesis).
+  - path: src/ground_plane_estimation/docker-compose.yaml
   - path: src/rviz/docker-compose.yaml
   # Teleop chain: keyboard -> /cmd_vel -> joint commands. Optional.
   - path: src/quadruped_gait_controller/docker-compose.yaml
