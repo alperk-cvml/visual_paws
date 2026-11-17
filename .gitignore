@@ -5,3 +5,5 @@ log/
 *__pycache__*
 src/*/*/__pycache__
 videos/*.MOV
+*_history_*/
+DEPTH_SCALE_DIAGNOSIS.md

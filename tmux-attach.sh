@@ -18,6 +18,7 @@ CONTAINERS=(
  # elevation_mapping
   elevation_mapping_cupy
   monocular_depth
+  depth_comparison
   localization
   nav2_mppi_navigation
   quadruped_gait_controller

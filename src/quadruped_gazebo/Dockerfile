@@ -6,6 +6,10 @@ SHELL ["/bin/bash", "-lc"]
 # Gazebo Classic (commonly used with ROS2 Humble via gazebo_ros_pkgs)
 RUN apt-get update && apt-get install -y \
     bash-completion \
+    python3-numpy \
+    python3-dev \
+    python3-pil \
+    python3-yaml \
     ros-${ROS_DISTRO}-ros-gz \
     ros-${ROS_DISTRO}-xacro \
     ros-${ROS_DISTRO}-robot-state-publisher \
@@ -24,4 +28,3 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work/ws
-

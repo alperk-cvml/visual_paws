@@ -1,0 +1,72 @@
+# Depth model comparison — backend definitions.
+#
+# The `/**` wildcard applies these to the node whatever it is named at runtime.
+#
+# Each entry in `backends` names a channel. Its parameters live under
+# `<key>.<name>`; `<key>.type` picks the backend class, and the remaining keys
+# are that class's own `param_defaults()`. Adding a channel here plus its key to
+# `backends` is all it takes — the launch file spawns the matching point cloud.
+/**:
+  ros__parameters:
+    # ── Input ────────────────────────────────────────────────────────────
+    # Gazebo defaults; the offline video pipeline overrides these to
+    # /camera/image_raw and /camera/camera_info.
+    input_image_topic: /front_camera/image_raw
+    input_camera_info_topic: /front_camera/camera_info
+
+    # ── Output ───────────────────────────────────────────────────────────
+    output_namespace: /depth_compare
+
+    # Upper bound only — the node never runs faster than this, but it will run
+    # slower whenever the models cannot keep up, which on modest hardware is
+    # always. Measured on an RTX 2060 (vits/vit_small, 640x480 input):
+    #
+    #   dav2_vkitti     ~341 ms      dav2_hypersim   ~296 ms
+    #   metric3d_s     ~1167 ms      all three      ~1.8 s/frame  (~0.55 Hz)
+    #
+    # Metric3D dominates because it runs at its 616x1064 canonical resolution
+    # regardless of input size. Lower this to match real throughput if you want
+    # the drop rate to be predictable rather than opportunistic, or compare two
+    # models at a time to keep the loop responsive.
+    target_fps: 5.0
+    device: cuda
+    log_stats_every: 20
+
+    backends:
+      - gt
+      - dav2_vkitti
+      - dav2_hypersim
+      - metric3d_s
+
+    # ── gt: Gazebo depth sensor, the reference channel ────────────────────
+    # Republished untouched. Not available in the offline video pipeline —
+    # drop `gt` from `backends` there.
+    gt.type: relay
+    gt.depth_topic: /depth_camera/depth_image
+    gt.camera_info_topic: /depth_camera/camera_info
+
+    # ── dav2_vkitti: outdoor/driving checkpoint (the current pipeline) ────
+    dav2_vkitti.type: depth_anything_v2
+    dav2_vkitti.dataset: vkitti
+    dav2_vkitti.encoder: vits
+    dav2_vkitti.max_depth: 80.0
+
+    # ── dav2_hypersim: indoor checkpoint ──────────────────────────────────
+    # Trained on indoor rooms at a plausible standing height, so it is the
+    # natural counter-test for VKITTI's near-field overestimation.
+    #
+    # Do NOT raise max_depth to cover an outdoor scene. In the DA-V2 metric
+    # head max_depth is a trained-in output scale (`sigmoid(x) * max_depth`),
+    # not a post-hoc clamp — setting it to 80 here would multiply every depth
+    # by 4 and manufacture exactly the scale error being investigated.
+    # Expect the far field to saturate near 20 m outdoors; that ceiling is a
+    # property of the checkpoint, and moving it is not a fix.
+    dav2_hypersim.type: depth_anything_v2
+    dav2_hypersim.dataset: hypersim
+    dav2_hypersim.encoder: vits
+    dav2_hypersim.max_depth: 20.0
+
+    # ── metric3d_s: intrinsics-conditioned ────────────────────────────────
+    metric3d_s.type: metric3d_v2
+    metric3d_s.model_name: metric3d_vit_small
+    metric3d_s.max_depth: 300.0

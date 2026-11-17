@@ -28,17 +28,21 @@ def generate_launch_description():
     pkg_name = "quadruped_gazebo"
     pkg_share = get_package_share_directory(pkg_name)
 
-    # Resolve world path at launch-description build time (plain Python string)
-    # This avoids Gazebo trying to treat it as a Fuel URI.
-    world_path = os.path.join(pkg_share, "worlds", "quadruped_world.sdf")
+    default_world_path = os.path.join(pkg_share, "worlds", "quadruped_world.sdf")
 
     # ── Launch arguments ──────────────────────────────────────────
     declare_sim_time = DeclareLaunchArgument(
         "use_sim_time", default_value="true"
     )
+    declare_world = DeclareLaunchArgument(
+        "world",
+        default_value=default_world_path,
+        description="Absolute path to the Gazebo SDF world",
+    )
     declare_x = DeclareLaunchArgument("x_pose", default_value="0.0")
     declare_y = DeclareLaunchArgument("y_pose", default_value="0.0")
     declare_z = DeclareLaunchArgument("z_pose", default_value="0.35")
+    declare_yaw = DeclareLaunchArgument("yaw_pose", default_value="0.0")
     declare_localization_mode = DeclareLaunchArgument(
         "localization_mode",
         default_value="ground_truth",
@@ -70,8 +74,6 @@ def generate_launch_description():
 
     # ── Gazebo Harmonic ───────────────────────────────────────────
     # gz_args: -r = run immediately (not paused)
-    # Pass world_path as a plain Python string so gz receives the real
-    # filesystem path, not a Fuel download URI.
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -81,7 +83,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "gz_args": f"-r {world_path}",
+            "gz_args": ["-r ", LaunchConfiguration("world")],
             "on_exit_shutdown": "true",
         }.items(),
     )
@@ -97,6 +99,7 @@ def generate_launch_description():
             "-x", LaunchConfiguration("x_pose"),
             "-y", LaunchConfiguration("y_pose"),
             "-z", LaunchConfiguration("z_pose"),
+            "-Y", LaunchConfiguration("yaw_pose"),
         ],
         output="screen",
     )
@@ -193,9 +196,11 @@ def generate_launch_description():
     return LaunchDescription(
         [
         declare_sim_time,
+        declare_world,
         declare_x,
         declare_y,
         declare_z,
+        declare_yaw,
         declare_localization_mode,
         robot_state_publisher,
         gazebo,

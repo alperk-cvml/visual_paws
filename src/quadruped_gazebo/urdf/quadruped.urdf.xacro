@@ -365,13 +365,28 @@
     </sensor>
   </gazebo>
 
-  <!-- Front camera (Gazebo Harmonic SDFormat style) -->
+  <!-- Front camera + depth camera (Gazebo Harmonic SDFormat style)
+
+       Both sensors are rigidly attached to camera_link at an identical zero
+       pose, so the RGB frame and the ground-truth depth frame observe the
+       scene from exactly the same viewpoint. The poses are written out rather
+       than left to default so the co-location is explicit: monocular depth is
+       compared pixel-for-pixel against the depth sensor, and any offset
+       between the two would show up as a scale or parallax error that looks
+       like a model defect.
+
+       Both publish with gz_frame_id camera_link_optical. Gazebo emits camera
+       images — and the depth camera's point cloud — in the optical convention
+       (z forward, x right, y down), which is what camera_link_optical encodes.
+       Stamping either one with the body frame camera_link would rotate its
+       point cloud 90 degrees relative to the other. -->
   <gazebo reference="camera_link">
     <sensor name="front_camera" type="camera">
       <always_on>true</always_on>
       <update_rate>30</update_rate>
       <topic>front_camera/image_raw</topic>
       <gz_frame_id>camera_link_optical</gz_frame_id>
+      <pose>0 0 0 0 0 0</pose>
       <camera>
         <horizontal_fov>1.3962634</horizontal_fov>
         <image>
@@ -389,8 +404,11 @@
       <always_on>true</always_on>
       <update_rate>10</update_rate>
       <topic>depth_camera/depth_image</topic>
-      <gz_frame_id>camera_link</gz_frame_id>
+      <gz_frame_id>camera_link_optical</gz_frame_id>
+      <pose>0 0 0 0 0 0</pose>
       <camera>
+        <!-- FOV and clip planes match front_camera so the two views are
+             identical up to resolution. -->
         <horizontal_fov>1.3962634</horizontal_fov>
         <image>
           <width>160</width>
