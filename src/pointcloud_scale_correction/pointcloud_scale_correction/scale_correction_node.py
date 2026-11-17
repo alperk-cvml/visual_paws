@@ -37,7 +37,7 @@ channel can get its own corrected twin.
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Float32
@@ -106,8 +106,12 @@ class ScaleCorrectionNode(Node):
         if output_topic == input_topic:
             raise ValueError('output_topic must differ from input_topic')
 
+        # RELIABLE on purpose: a reliable publisher matches both reliable
+        # (RViz default, ros2 topic echo) and best-effort subscribers, while
+        # a best-effort one is silently invisible to the former.
         self._pub_cloud = self.create_publisher(
-            PointCloud2, output_topic, qos_profile_sensor_data)
+            PointCloud2, output_topic,
+            QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE))
         # Currently-applied parameters, for rqt_plot next to the raw
         # /ground_plane/scale estimate.
         self._pub_applied = {

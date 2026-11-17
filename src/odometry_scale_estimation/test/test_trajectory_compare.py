@@ -187,11 +187,14 @@ def test_affine_with_zero_shift_matches_scalar():
     assert abs(affine.shift) < 0.02
 
 
-def test_affine_rejects_degenerate_spread():
-    # Equal chords everywhere: s and b are indistinguishable.
+def test_affine_degenerate_spread_falls_back_to_scalar():
+    # Equal chords everywhere: s and b are indistinguishable, so the model
+    # answers with the scalar fit and no shift.
     d_ref = np.full(20, 0.5)
     d_est = 2.0 * d_ref
-    assert AffineScaleModel(min_spread=0.05).fit(d_ref, d_est) is None
+    fit = AffineScaleModel(min_spread=0.05).fit(d_ref, d_est)
+    assert fit is not None and fit.shift is None
+    assert abs(fit.scale - 2.0) < 1e-6
 
 
 # ── factory ──────────────────────────────────────────────────────────────

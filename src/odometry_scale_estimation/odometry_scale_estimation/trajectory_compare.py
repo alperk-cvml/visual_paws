@@ -253,7 +253,7 @@ class AffineScaleModel(ScaleModel):
     Ordinary least squares with an intercept. Fitting an intercept needs
     SPREAD in the reference chord lengths (all-equal chords make s and b
     indistinguishable), so windows with std(d_ref) < `min_spread` are
-    rejected rather than answered with an arbitrary split. Chord pairs of
+    answered with the scalar fit (shift None) rather than an arbitrary split. Chord pairs of
     mixed separations (see `chord_pairs`) provide the spread naturally.
     """
 
@@ -265,7 +265,11 @@ class AffineScaleModel(ScaleModel):
 
     def _solve(self, d_ref, d_est):
         if float(np.std(d_ref)) < self._min_spread:
-            return None
+            # s and b are not separable here (slow or short motion gives
+            # near-equal chords). Fall back to the scalar fit with shift
+            # None rather than publishing nothing: a scale with no shift
+            # is still the useful observable.
+            return ScalarScaleModel._solve(self, d_ref, d_est)
         design = np.column_stack((d_ref, np.ones_like(d_ref)))
         (scale, shift), *_ = np.linalg.lstsq(design, d_est, rcond=None)
         return float(scale), float(shift)
