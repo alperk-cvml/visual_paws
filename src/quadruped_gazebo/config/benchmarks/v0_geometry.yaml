@@ -18,6 +18,16 @@ terrain:
   base_roughness_amplitude: 0.008
   correlation_length: 0.5
 
+# Seeded procedural albedo textures on the terrain and every obstacle.
+# Stereo matching and ORB features need surface texture; flat colours leave
+# whole surfaces with nothing to match. Remove this block (or set enabled:
+# false) to get the flat-colour world the monocular comparisons were run on.
+textures:
+  enabled: true
+  resolution: 1024        # texels per side, power of two
+  ground_tile_size: 2.0   # metres per terrain texture repeat (~2 mm per texel)
+  contrast: 0.45          # relative brightness variation around the base colour
+
 spawn:
   position: [-8.0, 3.0, 0.20]
   yaw: 0.0

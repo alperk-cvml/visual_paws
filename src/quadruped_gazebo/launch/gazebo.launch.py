@@ -53,6 +53,15 @@ def generate_launch_description():
         default_value="0.0",
         description="Extra camera height above the head mount (m); depth scale experiments only",
     )
+    declare_camera_rig = DeclareLaunchArgument(
+        "camera_rig",
+        default_value="mono",
+        choices=["mono", "stereo"],
+        description=(
+            "mono: legacy front_camera + depth_camera (monocular profiles); "
+            "stereo: ZED 2i rig publishing /stereo/*"
+        ),
+    )
     declare_localization_mode = DeclareLaunchArgument(
         "localization_mode",
         default_value="ground_truth",
@@ -69,6 +78,7 @@ def generate_launch_description():
         Command([
             "xacro ", xacro_file,
             " camera_mast_height:=", LaunchConfiguration("camera_mast_height"),
+            " camera_rig:=", LaunchConfiguration("camera_rig"),
         ]),
         value_type=str,
     )
@@ -124,6 +134,9 @@ def generate_launch_description():
     )
 
     # ── ROS <-> Gazebo topic bridge ───────────────────────────────
+    # Both rigs' topics are always bridged; the rig that is not spawned simply
+    # never publishes on its side. The stereo GT depth camera's gz-generated
+    # cloud is not bridged on purpose (body axes, not optical; see the URDF).
     bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -135,6 +148,13 @@ def generate_launch_description():
             "/depth_camera/depth_image@sensor_msgs/msg/Image[gz.msgs.Image",
             "/depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
             "/depth_camera/depth_image/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
+            "/stereo/left/image_rect@sensor_msgs/msg/Image[gz.msgs.Image",
+            "/stereo/left/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            "/stereo/right/image_rect@sensor_msgs/msg/Image[gz.msgs.Image",
+            "/stereo/right/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            "/stereo/depth_gt/image_raw@sensor_msgs/msg/Image[gz.msgs.Image",
+            "/stereo/depth_gt/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            "/stereo/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU",
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             "/model/quadruped/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
         ],
@@ -222,6 +242,7 @@ def generate_launch_description():
         declare_yaw,
         declare_headless,
         declare_camera_mast_height,
+        declare_camera_rig,
         declare_localization_mode,
         robot_state_publisher,
         gazebo,

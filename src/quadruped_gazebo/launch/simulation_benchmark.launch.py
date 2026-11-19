@@ -34,9 +34,20 @@ def _generate_and_include(context, package_share: Path):
     seed_value = LaunchConfiguration("seed").perform(context).strip()
     seed_override = None if seed_value in {"", "config"} else int(seed_value)
     selected_seed = scenario["random_seed"] if seed_override is None else seed_override
+
+    textures_value = LaunchConfiguration("textures").perform(context).strip().lower()
+    textures_override = {"config": None, "true": True, "false": False}[textures_value]
+
     output_root = Path(LaunchConfiguration("output_dir").perform(context)).resolve()
     run_dir = output_root / scenario["name"] / str(selected_seed)
-    artifacts = generate_world(scenario_path, run_dir, seed_override)
+    if textures_override is not None:
+        # Keep textured and flat worlds of the same seed apart on disk.
+        run_dir = run_dir.with_name(
+            f"{run_dir.name}_{'textured' if textures_override else 'flat'}"
+        )
+    artifacts = generate_world(
+        scenario_path, run_dir, seed_override, textures_override
+    )
 
     spawn = artifacts["spawn"]
     x, y, z = spawn["position"]
@@ -52,6 +63,8 @@ def _generate_and_include(context, package_share: Path):
             "use_sim_time": LaunchConfiguration("use_sim_time"),
             "localization_mode": LaunchConfiguration("localization_mode"),
             "camera_mast_height": LaunchConfiguration("camera_mast_height"),
+            "camera_rig": LaunchConfiguration("camera_rig"),
+            "headless": LaunchConfiguration("headless"),
         }.items(),
     )
     return [
@@ -93,6 +106,24 @@ def generate_launch_description() -> LaunchDescription:
                 choices=["ground_truth", "slam"],
             ),
             DeclareLaunchArgument("camera_mast_height", default_value="0.0"),
+            DeclareLaunchArgument(
+                "camera_rig", default_value="mono", choices=["mono", "stereo"]
+            ),
+            DeclareLaunchArgument(
+                "textures",
+                default_value="config",
+                choices=["config", "true", "false"],
+                description=(
+                    "Surface textures: 'config' follows the scenario YAML; "
+                    "'false' gives the flat-colour world the monocular "
+                    "comparisons were measured on"
+                ),
+            ),
+            DeclareLaunchArgument(
+                "headless",
+                default_value="false",
+                description="Run only the Gazebo server (no GUI)",
+            ),
             OpaqueFunction(function=_generate_and_include, args=[package_share]),
         ]
     )

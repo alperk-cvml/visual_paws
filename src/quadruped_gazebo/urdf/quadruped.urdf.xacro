@@ -50,6 +50,72 @@
        this changes the view only, not the dynamics. Keep 0 otherwise. -->
   <xacro:arg name="camera_mast_height" default="0.0"/>
 
+  <!-- Camera rig. "mono": the legacy front_camera + depth_camera pair the
+       monocular-depth profiles were measured with (no camera mass).
+       "stereo": a Stereolabs ZED 2i (2.1 mm lens) on the head: body + mass,
+       driver-named frames, left/right cameras, a ground-truth depth camera
+       registered to the left camera, and the camera's own IMU. The legacy
+       camera_link / camera_link_optical frames exist in both rigs. -->
+  <xacro:arg name="camera_rig" default="mono"/>
+  <xacro:property name="camera_rig" value="$(arg camera_rig)"/>
+
+  <!-- The ZED wrapper broadcasts zed_left_camera_frame -> zed_imu_link itself,
+       from each unit's factory calibration (general.publish_imu_tf). On the
+       real robot set this false so that edge keeps a single publisher;
+       Gazebo has no driver, so the simulated rig defines the frame here. -->
+  <xacro:arg name="publish_zed_imu_link" default="true"/>
+
+  <!-- ZED 2i, 2.1 mm lens. Frame layout and offsets mirror Stereolabs'
+       zed_macro.urdf.xacro (stereolabs/zed-ros2-description, model zed2i);
+       names follow the driver with general.camera_name = zed_name, so sim and
+       real share one frame set. Do not rename these frames. -->
+  <xacro:property name="zed_name"             value="zed"/>
+  <xacro:property name="zed_baseline"         value="0.12"/>
+  <xacro:property name="zed_housing_height"   value="0.0303"/>  <!-- datasheet 175.3 x 30.3 x 43.1 mm -->
+  <xacro:property name="zed_housing_width"    value="0.1753"/>
+  <xacro:property name="zed_housing_depth"    value="0.0431"/>
+  <xacro:property name="zed_mass"             value="0.229"/>   <!-- datasheet -->
+  <xacro:property name="zed_screw_offset_x"   value="-0.01"/>   <!-- housing centre vs camera_center (upstream) -->
+  <xacro:property name="zed_optical_offset_x" value="-0.005"/>  <!-- optical centres vs camera_center (upstream) -->
+
+  <!-- Imaging: HD720 at the 2.1 mm lens's nominal fx = 528 px (Stereolabs).
+       HFOV follows from fx, so the simulated camera_info carries exactly that
+       fx; replace with the unit's factory calibration once it is read. -->
+  <xacro:property name="zed_image_width"  value="1280"/>
+  <xacro:property name="zed_image_height" value="720"/>
+  <xacro:property name="zed_fx"           value="528.0"/>
+  <xacro:property name="zed_hfov"         value="${2*atan(zed_image_width/2/zed_fx)}"/>
+  <xacro:property name="zed_frame_rate"   value="15"/>
+  <!-- Per-pixel image noise in [0, 1] intensity units: an assumption (~2/255),
+       so stereo matching and ORB features don't see perfectly clean renders. -->
+  <xacro:property name="zed_image_noise_stddev" value="0.007"/>
+  <!-- Ground-truth depth range. Wider than the ZED's rated 0.3-20 m on
+       purpose: the truth is not clipped here, stereo_depth applies the
+       ZED's limits. -->
+  <xacro:property name="zed_gt_depth_near" value="0.05"/>
+  <xacro:property name="zed_gt_depth_far"  value="40.0"/>
+
+  <!-- ZED IMU. PLACEHOLDER noise: the Kalibr set a community post attributes
+       to Stereolabs for the ZED 2 (no official ZED 2i figures were found).
+       Continuous-time densities, as ORB-SLAM3's settings expect them; the
+       Gazebo per-sample stddevs below are derived from them. Replace with an
+       Allan-variance fit (allan_variance_ros) on the real unit. -->
+  <!-- Published rate, not the chip's 400 Hz sampling: the ZED wrapper
+       publishes at sensors.sensors_pub_rate (default 100, max 400), so set
+       that to 200 on the real camera. 200 Hz also divides the 1 ms physics
+       step evenly; 400 Hz does not, and Gazebo then fires every 2 ms (500 Hz). -->
+  <xacro:property name="zed_imu_rate"            value="200.0"/>
+  <xacro:property name="zed_gyro_noise_density"  value="8.6e-5"/>   <!-- rad/s/sqrt(Hz) -->
+  <xacro:property name="zed_gyro_random_walk"    value="2.2e-6"/>   <!-- rad/s^2/sqrt(Hz) -->
+  <xacro:property name="zed_accel_noise_density" value="1.4e-3"/>   <!-- m/s^2/sqrt(Hz) -->
+  <xacro:property name="zed_accel_random_walk"   value="8.0e-5"/>   <!-- m/s^3/sqrt(Hz) -->
+  <!-- Gazebo models bias drift as a Gauss-Markov process, not a pure random
+       walk: steady-state stddev rw*sqrt(tau/2) matches the random walk's
+       short-term growth. Turn-on biases are assumptions, not datasheet. -->
+  <xacro:property name="zed_imu_bias_tau"        value="300.0"/>
+  <xacro:property name="zed_gyro_turn_on_bias"   value="1.0e-3"/>   <!-- rad/s, assumption -->
+  <xacro:property name="zed_accel_turn_on_bias"  value="0.02"/>     <!-- m/s^2, assumption -->
+
   <!-- Leg link visuals/masses. Hip and upper leg each house a servo. -->
   <xacro:property name="hip_box_x"  value="0.060"/>
   <xacro:property name="hip_box_z"  value="0.045"/>
@@ -330,6 +396,71 @@
   </joint>
   <link name="camera_link_optical"/>
 
+  <!-- ===================== ZED 2i (camera_rig:=stereo) ===================== -->
+  <!-- Mounted on top of the head, housing front flush with the head's front
+       face. zed_camera_link is the camera's bottom screw hole (upstream
+       convention); camera_mast_height raises it like the legacy camera. -->
+  <xacro:if value="${camera_rig == 'stereo'}">
+    <joint name="${zed_name}_camera_mount_joint" type="fixed">
+      <parent link="base_link"/>
+      <child  link="${zed_name}_camera_link"/>
+      <origin xyz="${body_length/2 + head_length - zed_housing_depth/2 - zed_screw_offset_x} 0 ${(body_height - head_height)/2 + head_height/2 + $(arg camera_mast_height)}" rpy="0 0 0"/>
+    </joint>
+    <link name="${zed_name}_camera_link"/>
+
+    <joint name="${zed_name}_camera_center_joint" type="fixed">
+      <parent link="${zed_name}_camera_link"/>
+      <child  link="${zed_name}_camera_center"/>
+      <origin xyz="0 0 ${zed_housing_height/2}" rpy="0 0 0"/>
+    </joint>
+    <link name="${zed_name}_camera_center">
+      <xacro:box_inertial m="${zed_mass}" x="${zed_housing_depth}" y="${zed_housing_width}" z="${zed_housing_height}">
+        <origin xyz="${zed_screw_offset_x} 0 0" rpy="0 0 0"/>
+      </xacro:box_inertial>
+      <visual>
+        <origin xyz="${zed_screw_offset_x} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${zed_housing_depth} ${zed_housing_width} ${zed_housing_height}"/></geometry>
+        <material name="dark_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="${zed_screw_offset_x} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${zed_housing_depth} ${zed_housing_width} ${zed_housing_height}"/></geometry>
+      </collision>
+    </link>
+
+    <xacro:macro name="zed_eye" params="side y">
+      <joint name="${zed_name}_${side}_camera_joint" type="fixed">
+        <parent link="${zed_name}_camera_center"/>
+        <child  link="${zed_name}_${side}_camera_frame"/>
+        <origin xyz="${zed_optical_offset_x} ${y} 0" rpy="0 0 0"/>
+      </joint>
+      <link name="${zed_name}_${side}_camera_frame"/>
+      <!-- Optical frame (z forward, x right, y down) -->
+      <joint name="${zed_name}_${side}_camera_optical_joint" type="fixed">
+        <parent link="${zed_name}_${side}_camera_frame"/>
+        <child  link="${zed_name}_${side}_camera_frame_optical"/>
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+      </joint>
+      <link name="${zed_name}_${side}_camera_frame_optical"/>
+    </xacro:macro>
+    <xacro:zed_eye side="left"  y="${zed_baseline/2}"/>
+    <xacro:zed_eye side="right" y="${-zed_baseline/2}"/>
+
+    <!-- IMU between the lenses, axes aligned with the camera body. Nominal
+         only: the real offset/rotation is per-unit factory calibration
+         (the driver's left_camera_frame -> imu_link TF). The parent is the
+         left camera frame, exactly as the driver publishes it, so the real
+         values drop in unchanged. -->
+    <xacro:if value="$(arg publish_zed_imu_link)">
+      <joint name="${zed_name}_imu_joint" type="fixed">
+        <parent link="${zed_name}_left_camera_frame"/>
+        <child  link="${zed_name}_imu_link"/>
+        <origin xyz="0 ${-zed_baseline/2} 0" rpy="0 0 0"/>
+      </joint>
+      <link name="${zed_name}_imu_link"/>
+    </xacro:if>
+  </xacro:if>
+
   <!-- ===================== LEGS ===================== -->
 
   <xacro:leg prefix="FL" x_sign="1"  y_sign="1"/>
@@ -473,6 +604,7 @@
        relabels the header without changing the underlying data, so anything
        that trusts the frame_id (TF, RViz, ground_plane_estimation) sees it
        rotated 90 degrees relative to every optical-frame cloud. -->
+  <xacro:if value="${camera_rig == 'mono'}">
   <gazebo reference="camera_link">
     <sensor name="front_camera" type="camera">
       <always_on>true</always_on>
@@ -515,5 +647,119 @@
       </camera>
     </sensor>
   </gazebo>
+  </xacro:if>
+
+  <!-- ZED 2i sensors (camera_rig:=stereo), topics match the canonical
+       /stereo/* names the real driver is remapped onto.
+
+       Both eyes and the GT depth camera share one update rate, so they render
+       on the same sim step and carry identical stamps (a hardware-synced
+       stereo pair). Renders are already rectified and row-aligned, so the
+       images are published as image_rect. The right camera's projection
+       carries Tx = -fx * baseline, as a rectified ROS stereo camera_info
+       does; K stays as Gazebo derives it from the HFOV.
+
+       The GT depth image is stamped with the left optical frame, as the ZED
+       registers depth to the left camera. Its gz-generated <topic>/points
+       cloud is in body axes (x forward), not optical - it is deliberately
+       not bridged; build clouds from the depth image instead. -->
+  <xacro:macro name="zed_rgb_camera" params="side tx">
+    <gazebo reference="${zed_name}_${side}_camera_frame">
+      <sensor name="${zed_name}_${side}_camera" type="camera">
+        <always_on>true</always_on>
+        <update_rate>${zed_frame_rate}</update_rate>
+        <topic>stereo/${side}/image_rect</topic>
+        <gz_frame_id>${zed_name}_${side}_camera_frame_optical</gz_frame_id>
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>${zed_hfov}</horizontal_fov>
+          <image>
+            <width>${zed_image_width}</width>
+            <height>${zed_image_height}</height>
+            <format>RGB_INT8</format>
+          </image>
+          <clip>
+            <near>0.02</near>
+            <far>300</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>${zed_image_noise_stddev}</stddev>
+          </noise>
+          <lens>
+            <projection>
+              <p_fx>${zed_fx}</p_fx>
+              <p_fy>${zed_fx}</p_fy>
+              <p_cx>${zed_image_width/2}</p_cx>
+              <p_cy>${zed_image_height/2}</p_cy>
+              <tx>${tx}</tx>
+              <ty>0</ty>
+            </projection>
+          </lens>
+        </camera>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:macro name="zed_imu_axis_noise" params="density random_walk turn_on_bias">
+    <noise type="gaussian">
+      <mean>0</mean><stddev>${density * sqrt(zed_imu_rate)}</stddev>
+      <bias_mean>0</bias_mean><bias_stddev>${turn_on_bias}</bias_stddev>
+      <dynamic_bias_stddev>${random_walk * sqrt(zed_imu_bias_tau / 2)}</dynamic_bias_stddev>
+      <dynamic_bias_correlation_time>${zed_imu_bias_tau}</dynamic_bias_correlation_time>
+    </noise>
+  </xacro:macro>
+
+  <xacro:if value="${camera_rig == 'stereo'}">
+    <xacro:zed_rgb_camera side="left"  tx="0"/>
+    <xacro:zed_rgb_camera side="right" tx="${-zed_fx * zed_baseline}"/>
+
+    <gazebo reference="${zed_name}_left_camera_frame">
+      <sensor name="${zed_name}_depth_ground_truth" type="depth_camera">
+        <always_on>true</always_on>
+        <update_rate>${zed_frame_rate}</update_rate>
+        <topic>stereo/depth_gt/image_raw</topic>
+        <gz_frame_id>${zed_name}_left_camera_frame_optical</gz_frame_id>
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>${zed_hfov}</horizontal_fov>
+          <image>
+            <width>${zed_image_width}</width>
+            <height>${zed_image_height}</height>
+            <format>R_FLOAT32</format>
+          </image>
+          <clip>
+            <near>${zed_gt_depth_near}</near>
+            <far>${zed_gt_depth_far}</far>
+          </clip>
+        </camera>
+      </sensor>
+    </gazebo>
+
+    <xacro:if value="$(arg publish_zed_imu_link)">
+      <gazebo reference="${zed_name}_imu_link">
+        <sensor name="${zed_name}_imu" type="imu">
+          <always_on>true</always_on>
+          <update_rate>${zed_imu_rate}</update_rate>
+          <topic>stereo/imu/data</topic>
+          <gz_frame_id>${zed_name}_imu_link</gz_frame_id>
+          <pose>0 0 0 0 0 0</pose>
+          <imu>
+            <angular_velocity>
+              <x><xacro:zed_imu_axis_noise density="${zed_gyro_noise_density}" random_walk="${zed_gyro_random_walk}" turn_on_bias="${zed_gyro_turn_on_bias}"/></x>
+              <y><xacro:zed_imu_axis_noise density="${zed_gyro_noise_density}" random_walk="${zed_gyro_random_walk}" turn_on_bias="${zed_gyro_turn_on_bias}"/></y>
+              <z><xacro:zed_imu_axis_noise density="${zed_gyro_noise_density}" random_walk="${zed_gyro_random_walk}" turn_on_bias="${zed_gyro_turn_on_bias}"/></z>
+            </angular_velocity>
+            <linear_acceleration>
+              <x><xacro:zed_imu_axis_noise density="${zed_accel_noise_density}" random_walk="${zed_accel_random_walk}" turn_on_bias="${zed_accel_turn_on_bias}"/></x>
+              <y><xacro:zed_imu_axis_noise density="${zed_accel_noise_density}" random_walk="${zed_accel_random_walk}" turn_on_bias="${zed_accel_turn_on_bias}"/></y>
+              <z><xacro:zed_imu_axis_noise density="${zed_accel_noise_density}" random_walk="${zed_accel_random_walk}" turn_on_bias="${zed_accel_turn_on_bias}"/></z>
+            </linear_acceleration>
+          </imu>
+        </sensor>
+      </gazebo>
+    </xacro:if>
+  </xacro:if>
 
 </robot>

@@ -16,11 +16,17 @@ from PIL import Image
 import yaml
 
 
-GENERATOR_VERSION = 2
+GENERATOR_VERSION = 3
 SUPPORTED_SCHEMA_VERSION = 1
 HEIGHTFIELD_TYPES = {"rough_patch", "slope", "ditch"}
 MODEL_TYPES = {"rock_field", "rubble_field", "bridge", "passage"}
 SUPPORTED_TYPES = HEIGHTFIELD_TYPES | MODEL_TYPES
+DEFAULT_TEXTURES = {
+    "enabled": False,
+    "resolution": 1024,
+    "ground_tile_size": 2.0,
+    "contrast": 0.45,
+}
 
 
 class ScenarioError(ValueError):
@@ -77,6 +83,26 @@ def validate_scenario(scenario: dict[str, Any]) -> None:
     _positive_number(
         terrain.get("correlation_length"), "terrain.correlation_length"
     )
+
+    # Optional: scenarios without a textures block keep flat colours.
+    textures = scenario.get("textures")
+    if textures is not None:
+        if not isinstance(textures, dict):
+            raise ScenarioError("textures must be a mapping")
+        if not isinstance(textures.get("enabled"), bool):
+            raise ScenarioError("textures.enabled must be true or false")
+        resolution = textures.get("resolution")
+        if (
+            not isinstance(resolution, int)
+            or isinstance(resolution, bool)
+            or resolution < 64
+            or not _is_power_of_two(resolution)
+        ):
+            raise ScenarioError("textures.resolution must be a power of two >= 64")
+        _positive_number(textures.get("ground_tile_size"), "textures.ground_tile_size")
+        contrast = _positive_number(textures.get("contrast"), "textures.contrast")
+        if contrast > 1.0:
+            raise ScenarioError("textures.contrast must be in (0, 1]")
 
     spawn = _required_mapping(scenario, "spawn")
     position = spawn.get("position")
@@ -186,10 +212,23 @@ def generate_world(
     scenario_path: str | Path,
     output_dir: str | Path,
     seed_override: int | None = None,
+    textures_override: bool | None = None,
 ) -> dict[str, Any]:
-    """Generate deterministic benchmark artifacts and return their paths."""
+    """Generate deterministic benchmark artifacts and return their paths.
+
+    ``textures_override`` forces surface textures on or off regardless of the
+    scenario's ``textures.enabled`` (defaults fill in a missing block), so one
+    scenario serves both the textured stereo profile and the flat-colour
+    world the monocular comparisons were measured on.
+    """
     scenario_path = Path(scenario_path).resolve()
     scenario = load_scenario(scenario_path)
+    if textures_override is not None:
+        scenario["textures"] = {
+            **DEFAULT_TEXTURES,
+            **scenario.get("textures", {}),
+            "enabled": bool(textures_override),
+        }
     seed = scenario["random_seed"] if seed_override is None else seed_override
     if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
         raise ScenarioError("seed override must be a non-negative integer")
@@ -213,8 +252,13 @@ def generate_world(
     # and heightfield collisions. Use one indexed mesh for both so the depth
     # camera and physics engine necessarily consume the same surface. Keep the
     # PNG as a portable inspection artifact and elevation.npy as numeric truth.
+    textures = _write_textures(scenario, seed, output_path)
+    ground_tile = (
+        float(scenario["textures"]["ground_tile_size"]) if textures else None
+    )
+
     mesh_path = output_path / "terrain.obj"
-    _write_terrain_mesh(mesh_path, elevation, x_coords, y_coords)
+    _write_terrain_mesh(mesh_path, elevation, x_coords, y_coords, ground_tile)
 
     model_records: list[dict[str, Any]] = []
     world_root = _build_world_sdf(
@@ -225,6 +269,7 @@ def generate_world(
         y_coords,
         mesh_path,
         model_records,
+        textures,
     )
     ET.indent(world_root, space="  ")
     world_path = output_path / "world.sdf"
@@ -244,6 +289,7 @@ def generate_world(
         mesh_path,
         elevation_path,
         model_records,
+        textures,
     )
     manifest_path = output_path / "manifest.json"
     manifest_path.write_text(
@@ -257,8 +303,85 @@ def generate_world(
         "terrain_mesh": mesh_path,
         "elevation": elevation_path,
         "manifest": manifest_path,
+        "textures": textures,
         "spawn": copy.deepcopy(scenario["spawn"]),
     }
+
+
+# Base albedo (linear RGB) per surface category. These are the flat colours
+# the untextured worlds use, so textured and untextured renders keep the same
+# overall look.
+SURFACE_COLORS = {
+    "ground": (0.44, 0.40, 0.33),
+    "rock": (0.32, 0.30, 0.27),
+    "rubble": (0.48, 0.48, 0.46),
+    "bridge": (0.45, 0.32, 0.20),
+    "wall": (0.55, 0.50, 0.43),
+}
+
+
+def _write_textures(
+    scenario: dict[str, Any], seed: int, output_path: Path
+) -> dict[str, Path]:
+    """Write one seeded, tileable albedo texture per surface category.
+
+    Stereo matching and ORB features need surface texture: Gazebo's flat
+    colours leave whole surfaces with nothing to match. The pattern is
+    1/f-filtered noise plus a white-noise share, so it carries structure from
+    the tile size down to single texels and stays matchable from near and
+    far. Built in the frequency domain, it tiles seamlessly, and no periodic
+    motif repeats inside a stereo matcher's disparity search range.
+    """
+    config = scenario.get("textures")
+    if not config or not config["enabled"]:
+        return {}
+    resolution = int(config["resolution"])
+    contrast = float(config["contrast"])
+    texture_dir = output_path / "textures"
+    texture_dir.mkdir(parents=True, exist_ok=True)
+
+    paths: dict[str, Path] = {}
+    for name, base_color in SURFACE_COLORS.items():
+        rng = np.random.default_rng(
+            _feature_rng(seed, f"texture_{name}").getrandbits(63)
+        )
+        white = rng.standard_normal((resolution, resolution))
+        freq_y = np.fft.fftfreq(resolution)[:, None]
+        freq_x = np.fft.rfftfreq(resolution)[None, :]
+        radius = np.hypot(freq_x, freq_y)
+        radius[0, 0] = 1.0
+        spectrum = np.fft.rfft2(white) / radius
+        spectrum[0, 0] = 0.0
+        multiscale = np.fft.irfft2(spectrum, s=white.shape)
+        field = 0.7 * multiscale / multiscale.std() + 0.3 * white / white.std()
+        field /= field.std()
+        shade = np.clip(1.0 + contrast * field, 0.05, 2.0)
+        rgb = np.asarray(base_color)[None, None, :] * shade[..., None]
+        pixels = np.clip(np.rint(rgb * 255.0), 0, 255).astype(np.uint8)
+        path = texture_dir / f"{name}.png"
+        Image.fromarray(pixels, mode="RGB").save(path, compress_level=6)
+        paths[name] = path
+    return paths
+
+
+def _set_material(
+    element: ET.Element, color: str, texture: Path | None = None
+) -> None:
+    """Flat colour, or a PBR albedo map with a neutral base colour."""
+    material = ET.SubElement(element, "material")
+    if texture is None:
+        _text(material, "ambient", color)
+        _text(material, "diffuse", color)
+        return
+    # The renderer multiplies the base colour with the albedo map; keep it
+    # white so the texture alone sets the colour.
+    _text(material, "ambient", "1 1 1 1")
+    _text(material, "diffuse", "1 1 1 1")
+    _text(material, "specular", "0.05 0.05 0.05 1")
+    metal = ET.SubElement(ET.SubElement(material, "pbr"), "metal")
+    _text(metal, "albedo_map", str(texture))
+    _text(metal, "metalness", "0.0")
+    _text(metal, "roughness", "0.9")
 
 
 def _generate_elevation(
@@ -323,8 +446,13 @@ def _write_terrain_mesh(
     elevation: np.ndarray,
     x_coords: np.ndarray,
     y_coords: np.ndarray,
+    texture_tile_size: float | None = None,
 ) -> None:
-    """Write the elevation grid as a deterministic, upward-facing OBJ mesh."""
+    """Write the elevation grid as a deterministic, upward-facing OBJ mesh.
+
+    With ``texture_tile_size`` set, vertices carry world-planar UVs so the
+    albedo texture repeats every ``texture_tile_size`` metres in x and y.
+    """
     rows, columns = elevation.shape
     lines = ["# Visual Paws deterministic benchmark terrain\n"]
     for row, y in enumerate(y_coords):
@@ -333,6 +461,13 @@ def _write_terrain_mesh(
                 f"v {float(x):.9f} {float(y):.9f} "
                 f"{float(elevation[row, column]):.9f}\n"
             )
+    if texture_tile_size is not None:
+        for y in y_coords:
+            for x in x_coords:
+                lines.append(
+                    f"vt {float(x) / texture_tile_size:.9f} "
+                    f"{float(y) / texture_tile_size:.9f}\n"
+                )
 
     dz_dy, dz_dx = np.gradient(elevation, y_coords, x_coords)
     normal_x = -dz_dx
@@ -348,7 +483,13 @@ def _write_terrain_mesh(
             )
 
     # OBJ indices are one-based. Row zero maps to +Y, so this winding gives
-    # both triangles an upward-facing normal.
+    # both triangles an upward-facing normal. Vertex, UV and normal share one
+    # index per grid point.
+    def corner(index: int) -> str:
+        if texture_tile_size is None:
+            return f"{index}//{index}"
+        return f"{index}/{index}/{index}"
+
     for row in range(rows - 1):
         for column in range(columns - 1):
             top_left = row * columns + column + 1
@@ -356,12 +497,12 @@ def _write_terrain_mesh(
             bottom_left = top_left + columns
             bottom_right = bottom_left + 1
             lines.append(
-                f"f {top_left}//{top_left} {bottom_left}//{bottom_left} "
-                f"{top_right}//{top_right}\n"
+                f"f {corner(top_left)} {corner(bottom_left)} "
+                f"{corner(top_right)}\n"
             )
             lines.append(
-                f"f {top_right}//{top_right} {bottom_left}//{bottom_left} "
-                f"{bottom_right}//{bottom_right}\n"
+                f"f {corner(top_right)} {corner(bottom_left)} "
+                f"{corner(bottom_right)}\n"
             )
 
     path.write_text("".join(lines), encoding="ascii")
@@ -375,7 +516,9 @@ def _build_world_sdf(
     y_coords: np.ndarray,
     mesh_path: Path,
     model_records: list[dict[str, Any]],
+    textures: dict[str, Path] | None = None,
 ) -> ET.Element:
+    textures = textures or {}
     sdf = ET.Element("sdf", {"version": "1.10"})
     world = ET.SubElement(sdf, "world", {"name": scenario["name"]})
 
@@ -435,9 +578,7 @@ def _build_world_sdf(
         _text(mesh, "uri", mesh_path.as_uri())
         _text(mesh, "scale", "1 1 1")
         if element_name == "visual":
-            material = ET.SubElement(element, "material")
-            _text(material, "ambient", "0.44 0.40 0.33 1")
-            _text(material, "diffuse", "0.44 0.40 0.33 1")
+            _set_material(element, "0.44 0.40 0.33 1", textures.get("ground"))
         if element_name == "collision":
             surface = ET.SubElement(element, "surface")
             friction = ET.SubElement(surface, "friction")
@@ -461,6 +602,7 @@ def _build_world_sdf(
                     y_coords,
                     static_clearance,
                     model_records,
+                    textures.get("rock"),
                 )
             elif feature_type == "rubble_field":
                 _add_rubble(
@@ -473,6 +615,7 @@ def _build_world_sdf(
                     y_coords,
                     static_clearance,
                     model_records,
+                    textures.get("rubble"),
                 )
             elif feature_type == "bridge":
                 center_x, center_y = feature["center"]
@@ -489,6 +632,7 @@ def _build_world_sdf(
                     [length, width, thickness],
                     scenario["world"]["friction"],
                     "0.45 0.32 0.20 1",
+                    textures.get("bridge"),
                 )
                 model_records.append(
                     _model_record(feature, lane, feature["id"], [center_x, center_y, z])
@@ -504,6 +648,7 @@ def _build_world_sdf(
                     x_coords,
                     y_coords,
                     model_records,
+                    textures.get("wall"),
                 )
 
     return sdf
@@ -519,6 +664,7 @@ def _add_rocks(
     y_coords: np.ndarray,
     clearance: float,
     model_records: list[dict[str, Any]],
+    texture: Path | None = None,
 ) -> None:
     rng = _feature_rng(seed, feature["id"])
     center_x, center_y = feature["center"]
@@ -536,7 +682,7 @@ def _add_rocks(
         _text(model, "static", "true")
         _text(model, "pose", f"{x:.9f} {y:.9f} {ground + radius:.9f} 0 0 0")
         link = ET.SubElement(model, "link", {"name": "link"})
-        _add_sphere_geometry(link, radius, "0.32 0.30 0.27 1")
+        _add_sphere_geometry(link, radius, "0.32 0.30 0.27 1", texture)
         model_records.append(_model_record(feature, lane, name, [x, y, ground + radius]))
 
 
@@ -550,6 +696,7 @@ def _add_rubble(
     y_coords: np.ndarray,
     clearance: float,
     model_records: list[dict[str, Any]],
+    texture: Path | None = None,
 ) -> None:
     rng = _feature_rng(seed, feature["id"])
     center_x, center_y = feature["center"]
@@ -572,6 +719,7 @@ def _add_rubble(
             [size_x, size_y, size_z],
             0.9,
             "0.48 0.48 0.46 1",
+            texture,
         )
         model_records.append(
             _model_record(feature, lane, name, [x, y, ground + size_z / 2.0])
@@ -588,6 +736,7 @@ def _add_passage(
     x_coords: np.ndarray,
     y_coords: np.ndarray,
     model_records: list[dict[str, Any]],
+    texture: Path | None = None,
 ) -> None:
     center_x, center_y = feature["center"]
     length, _ = feature["size"]
@@ -607,6 +756,7 @@ def _add_passage(
             [length, thickness, height],
             friction,
             "0.55 0.50 0.43 1",
+            texture,
         )
         model_records.append(_model_record(feature, lane, name, [center_x, y, z]))
 
@@ -618,6 +768,7 @@ def _add_box_model(
     size: list[float],
     friction: float,
     color: str,
+    texture: Path | None = None,
 ) -> None:
     model = ET.SubElement(world, "model", {"name": name})
     _text(model, "static", "true")
@@ -635,21 +786,19 @@ def _add_box_model(
             _text(ode, "mu", friction)
             _text(ode, "mu2", friction)
         else:
-            material = ET.SubElement(element, "material")
-            _text(material, "ambient", color)
-            _text(material, "diffuse", color)
+            _set_material(element, color, texture)
 
 
-def _add_sphere_geometry(link: ET.Element, radius: float, color: str) -> None:
+def _add_sphere_geometry(
+    link: ET.Element, radius: float, color: str, texture: Path | None = None
+) -> None:
     for element_name in ("collision", "visual"):
         element = ET.SubElement(link, element_name, {"name": element_name})
         geometry = ET.SubElement(element, "geometry")
         sphere = ET.SubElement(geometry, "sphere")
         _text(sphere, "radius", f"{radius:.9f}")
         if element_name == "visual":
-            material = ET.SubElement(element, "material")
-            _text(material, "ambient", color)
-            _text(material, "diffuse", color)
+            _set_material(element, color, texture)
 
 
 def _build_manifest(
@@ -664,6 +813,7 @@ def _build_manifest(
     mesh_path: Path,
     elevation_path: Path,
     model_records: list[dict[str, Any]],
+    textures: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     features = []
     for lane in scenario["lanes"]:
@@ -697,11 +847,17 @@ def _build_manifest(
         "scenario": scenario["name"],
         "seed": seed,
         "scenario_sha256": _sha256(scenario_path),
+        # Effective setting, which a launch override can change from the YAML.
+        "textures": scenario.get("textures", {"enabled": False}),
         "artifacts": {
             "world.sdf": _sha256(world_path),
             "terrain.png": _sha256(terrain_path),
             "terrain.obj": _sha256(mesh_path),
             "elevation.npy": _sha256(elevation_path),
+            **{
+                f"textures/{path.name}": _sha256(path)
+                for path in (textures or {}).values()
+            },
         },
         "terrain": {
             "shape": list(elevation.shape),

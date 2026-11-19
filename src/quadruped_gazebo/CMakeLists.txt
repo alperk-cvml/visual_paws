@@ -37,6 +37,9 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_benchmark_generator
     test/test_benchmark_generator.py
   )
+  ament_add_pytest_test(test_stereo_rig
+    test/test_stereo_rig.py
+  )
 endif()
 
 ament_package()

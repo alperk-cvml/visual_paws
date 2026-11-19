@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Visual Paws** is a ROS 2 quadruped robot autonomous navigation stack. It targets real outdoor deployment on a 12-DOF quadruped (3 joints/leg × 4 legs) using **camera-only perception** (no LiDAR), running on NVIDIA Jetson Orin Nano / NX. The stack is designed for multi-vehicle extensibility (quadruped, Ackermann, tracked, USV) through a shared vehicle interface contract. Simulation runs in Gazebo Harmonic; deployment is fully containerized.
+**Visual Paws** is a ROS 2 quadruped robot autonomous navigation stack. It targets real outdoor deployment on a 12-DOF quadruped (3 joints/leg × 4 legs) using **camera-only perception** (no LiDAR) from a **stereo camera — Stereolabs ZED 2i, 2.1 mm lens** — running on NVIDIA Jetson Orin Nano / NX. The earlier monocular-depth path is on hold (see [Current Target](#current-target)). The stack is designed for multi-vehicle extensibility (quadruped, Ackermann, tracked, USV) through a shared vehicle interface contract. Simulation runs in Gazebo Harmonic; deployment is fully containerized.
 
-**Key stack**: ROS 2 Jazzy · Gazebo Harmonic · CycloneDDS · Python 3 / C++ · NVIDIA CUDA (GPU containers) · TensorRT (inference)
+**Key stack**: ROS 2 Jazzy · Gazebo Harmonic · CycloneDDS · Python 3 / C++ · NVIDIA CUDA (GPU containers) · TensorRT (inference) · ZED SDK + zed-ros2-wrapper (stereo depth, planned)
 
 **Hardware target**: NVIDIA Jetson Orin Nano / NX (ARM64, JetPack 6.x, L4T r36.x)
 
@@ -14,11 +14,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Design Principles
 
-- **Camera-only perception**: No LiDAR. Metric depth is inferred from RGB via a neural network (Metric3D V2), conditioned on the camera intrinsics for metric scale.
+- **Camera-only perception, stereo depth**: No LiDAR. Metric depth comes from stereo disparity on a ZED 2i (12 cm baseline, 2.1 mm lens), computed by the ZED SDK on hardware: scale is fixed by the calibrated baseline, not learned. The ZED SDK cannot ingest Gazebo images, so in simulation depth comes from ground truth plus a ZED-like error model (see [Current Target](#current-target)). The monocular path (Metric3D V2, intrinsics-conditioned) is **on hold** because of its per-frame scale error. Its modules stay in the repo and must keep building, but they are no longer the production depth source.
 - **Modular, not end-to-end**: Each layer is independently replaceable. AI is injected only at the locomotion layer (Phase 3 RL policy), not throughout the stack. This preserves debuggability, multi-vehicle reuse, and open-source reference value.
 - **Vehicle-agnostic above the odometry boundary**: All platforms publish `nav_msgs/Odometry` + a traversability costmap. Elevation mapping, traversability, MPPI, and localization layers are shared across vehicle types. Only the odometry source and gait/drive controller differ per platform.
 - **Docker-first**: Every module has its own `Dockerfile` and `docker-compose.yaml`. No bare-metal ROS installs.
-- **Uncertainty is explicit**: Depth estimates carry per-pixel variance. This is an interface contract, not an optional extra.
+- **Uncertainty is explicit**: Depth estimates carry per-pixel variance. This is an interface contract, not an optional extra. For stereo, derive it from the matcher's confidence and the disparity noise model σ_Z ≈ Z²·σ_d / (f·B): error grows with the square of range.
 - **Production hygiene from the start**: CI, unit tests, quantitative metrics, and honest trade-off documentation are built-in, not afterthoughts.
 
 ---
@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | **Phase 2** | Traversability-aware routing, real depth inference, real localization | Fixed trot + terrain cost |
 | **Phase 3** | Perceptive locomotion on real hardware; Isaac Lab RL policy | Perceptive RL policy (Isaac Lab → Jetson) |
 
-> Current state: **Phase 2** — offline video pipeline operational (video replay → Metric3D V2 depth → ORB-SLAM3 localization → GPU elevation mapping). Gazebo sim pipeline also functional. Step 5 (elevation map accumulation from offline video) is the active work item.
+> Current state: **Phase 2, switching perception to stereo.** The monocular pipeline (video replay → Metric3D V2 depth → ORB-SLAM3 localization → GPU elevation mapping) and the Gazebo sim pipeline both run end to end. Monocular depth-scale work is on hold; the active work item is the stereo pipeline (see [Current Target](#current-target)).
 
 ---
 
@@ -54,6 +54,8 @@ docker compose up -d --build     # build images and start in background
 ./tmux-attach.sh --detach        # create all tmux sessions without attaching
 ```
 
+> **Monocular profiles (on hold).** The offline-video, depth-comparison and scale-probe profiles below belong to the monocular path. Keep them runnable. Stereo profiles get added here as the [stereo pipeline steps](#current-target) land.
+
 **Offline video pipeline** (recorded video → depth estimation → SLAM → elevation map):
 ```bash
 docker compose --env-file offline-video.env up -d --build
@@ -70,6 +72,15 @@ docker compose --env-file depth-comparison.env \
 ```
 
 The `depth-comparison.env` profile sets `USE_SIM_TIME=true`, `LOCALIZATION_MODE=ground_truth` (no EKF or ORB-SLAM3 — the comparison needs a TF tree, not drift correction), selects the deterministic `v0_geometry` simulation benchmark, and sets `COMPARE_BACKENDS=gt,dav2_vkitti,dav2_hypersim,metric3d_s`. `SIM_BENCHMARK_SEED=config` uses `random_seed: 42` from the scenario YAML. See `depth-comparison.env` for all variables.
+
+**Stereo simulation** (ZED 2i rig on the textured benchmark: stereo Step 1):
+```bash
+docker compose --env-file stereo-sim.env \
+  -f docker-compose-stereo-sim.yaml up -d --build
+tmux attach -t quadruped_test_controller   # drive it
+```
+
+Publishes `/stereo/{left,right}/image_rect`, `/stereo/depth_gt/image_raw`, their `camera_info`, and `/stereo/imu/data`. Nothing consumes them until `stereo_depth` (Step 2).
 
 **Depth scale probe** (Alternative 1 — live ground-plane scale estimate against the production Metric3D node):
 ```bash
@@ -129,10 +140,13 @@ All code must follow **REP-105** (coordinate frames) and **REP-103** (units/axes
 | `base_link` | Robot body centre (rigid body) |
 | `base_footprint` | Projection of `base_link` onto ground plane |
 | `camera_link` | Camera rigid body origin |
-| `camera_optical` | Camera optical frame (z forward, x right, y down) |
+| `camera_link_optical` | Camera optical frame (z forward, x right, y down) |
+| ZED driver frames | Stereo camera body, left/right optical frames, ZED IMU (planned; names set by the driver, see rules below) |
 | `imu_link` | IMU sensor frame |
  
-**Never invent frame names** (`robot`, `world`, `camera_frame`, `base`, `map_frame`). Use the names above. New sensor frames follow `<sensor>_link` (rigid body) and `<sensor>_optical` (optical frame).
+**Never invent frame names** (`robot`, `world`, `camera_frame`, `base`, `map_frame`). Use the names above. New sensor frames follow `<sensor>_link` (rigid body) and `<sensor>_link_optical` (optical frame), matching the existing `camera_link_optical`.
+
+**Exception: driver-owned frames keep the driver's names.** The ZED wrapper stamps images, depth and IMU with frames derived from its `camera_name` (e.g. `zed_camera_link` plus left/right optical frames and an IMU frame). Use them verbatim, copied from the pinned wrapper's `zed_macro.urdf.xacro` rather than typed from memory, and make Gazebo emit the same names so sim and real share one frame set.
  
 ### Authoritative TF Tree
  
@@ -143,7 +157,9 @@ map
         ├── base_footprint   (publisher: robot_state_publisher, static)
         ├── imu_link         (publisher: robot_state_publisher, static)
         ├── camera_link      (publisher: robot_state_publisher, static)
-        │   └── camera_optical (publisher: robot_state_publisher, static)
+        │   └── camera_link_optical (publisher: robot_state_publisher, static)
+        ├── zed_camera_link  (planned; robot_state_publisher, static, via the ZED xacro macro)
+        │   └── [ZED left/right camera + optical frames, ZED IMU frame: driver-defined names]
         └── [leg frames]     (publisher: robot_state_publisher, from joint states)
 ```
  
@@ -151,11 +167,14 @@ Rules:
 - **Each TF edge has exactly one publisher.** Adding a publisher means removing the old one. Duplicate publishers cause nondeterministic tf2 conflicts.
 - ORB-SLAM3 publishes **`map→odom`**, not `map→base_link`. It corrects drift via the odom frame, leaving `odom→base_link` to odometry/EKF.
 - Static transforms come from `robot_state_publisher` or `static_transform_publisher` — never a dynamic publisher emitting fixed values.
+- **The ZED wrapper publishes no TF.** Launch it with `publish_urdf:=false` (the robot's `robot_state_publisher` owns the camera subtree through the ZED xacro macro), `pos_tracking.publish_tf:=false` and `pos_tracking.publish_map_tf:=false` (the EKF owns `odom→base_link`; SLAM / the global EKF owns `map→odom`). Its positional-tracking odometry may still be published as a topic for comparison.
 - `elevation_mapping_cupy` fixed frame is **`map`** in offline-video mode (ORB-SLAM3 owns `map→base_link` directly). In Gazebo sim with dual-EKF, use **`odom`** — elevation mapping must run in a *smooth* frame; `map` frame discontinuities from loop closure would corrupt accumulated point clouds.
 - **Point clouds from `depth_image_proc` are in `camera_link_optical` and carry the source image timestamp. Never restamp or reframe them.** This is the single most common Step 4 failure.
 ---
  
-## Offline Video Workflow
+## Offline Video Workflow (monocular, on hold)
+
+> For stereo, ZED SVO2 recordings played back through the ZED wrapper replace this bench. Playback gives the same topics as the live camera, IMU included (stereo Step 5). The rules below still apply whenever the monocular profile is run.
  
 The offline pipeline processes pre-recorded video files through the full perception-to-mapping stack without Gazebo or live sensors.
  
@@ -206,6 +225,24 @@ The same pipeline runs against two sources. Do not hardcode either.
 | Camera info | `/depth_camera/camera_info` | `/camera/camera_info` |
 | Point cloud | `/depth_camera/points` | `/depth/points` |
  
+### Stereo topics (planned)
+
+The ZED driver and the Gazebo stereo pair publish the same canonical names. The ZED wrapper's own topic names change between wrapper releases, so they are remapped onto these names at launch and never consumed directly.
+
+| Role | Gazebo stereo pair | ZED 2i (live or SVO2) |
+|---|---|---|
+| Left / right rectified image | `/stereo/{left,right}/image_rect` (renders are already rectified) | ZED rectified images, remapped |
+| Left / right camera info | `/stereo/{left,right}/camera_info` | ZED camera info, remapped |
+| Depth (metres, registered to left) | `/depth/image_raw` from `stereo_depth` | ZED SDK depth, remapped |
+| Depth confidence | `/depth/confidence` | ZED confidence map, remapped |
+| Depth camera info | `/depth/camera_info` | ZED depth camera info, remapped |
+| Point cloud | `/depth/points` (`depth_image_proc`) | `/depth/points` (`depth_image_proc`, not the ZED's own cloud, so the cloud path is identical) |
+| Ground-truth depth (sim only) | `/stereo/depth_gt/image_raw` + `camera_info` (left-registered) | none |
+| Camera IMU | `/stereo/imu/data` (200 Hz, frame `zed_imu_link`) | ZED IMU, remapped (`sensors_pub_rate: 200`) |
+| Body IMU | `/imu/data` (`imu_link`) | Robot IMU. The camera IMU stays on its own topic: it is hardware-synced to the images, which ORB-SLAM3 stereo-inertial needs |
+
+Only one node may publish `/depth/image_raw`: never run `monocular_depth` together with a stereo depth source.
+
 All topic names must be remappable via launch arguments. Nodes that hardcode topic names break the sim/real switch.
  
 > **Critical**: Gazebo depth is ground truth. Real depth is *inferred* and carries
@@ -213,6 +250,8 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
 > stack.** Geometry, integration, and planning logic are testable in sim; the depth network,
 > ORB-SLAM3, and real camera behaviour (auto-exposure, rolling shutter, motion
 > blur) require recorded footage via the offline video pipeline as a separate test bench.
+>
+> **Stereo partly changes this.** Sim stereo runs a real matcher on rendered images, so Gazebo *can* validate the stereo geometry: baseline, rectification, disparity→depth, frames, and the matcher on textured surfaces. Its error is still only a lower bound (renders are noise-free, perfectly rectified and synchronized). Flat-shaded Gazebo surfaces have no texture to match, so benchmark worlds need textured materials. Real optics still need recorded footage (ZED SVO2).
  
 ---
 
@@ -223,14 +262,14 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  PERCEPTION                                                     │
+│  PERCEPTION                   (stereo; monocular path on hold)  │
 │                                                                 │
-│  RGB Camera + CameraInfo ──→ Metric3D V2 ──→ /depth/image_raw  │
-│                          (normals head not yet wired:           │
-│                           /depth/surface_normals is planned)    │
+│  ZED 2i (live / SVO2) ──→ ZED SDK depth ──→ /depth/image_raw    │
+│  Gazebo GT + noise    ──→ stereo_depth  ──→ /depth/confidence   │
+│  (surface normals: planned, derived from the depth image)       │
 │                                                                 │
-│  /depth/image_raw + /camera/camera_info                        │
-│    └──→ depth_image_proc ──→ /depth/points (PointCloud2)       │
+│  /depth/image_raw + /depth/camera_info                          │
+│    └──→ depth_image_proc ──→ /depth/points (PointCloud2)        │
 └─────────────────────────────────────────────────────────────────┘
                           │ /depth/points
                           │ /depth/surface_normals
@@ -239,51 +278,51 @@ All topic names must be remappable via launch arguments. Nodes that hardcode top
 │  MAPPING                                                        │
 │                                                                 │
 │  elevation_mapping_cupy                                         │
-│    ← /depth/points (covariance-weighted fusion, GPU)           │
-│    ← /depth/surface_normals (slope/roughness inputs)           │
-│    ← /odom (robot pose)                                        │
-│    → /elevation_map  (grid_map)                                │
+│    ← /depth/points (covariance-weighted fusion, GPU)            │
+│    ← /depth/surface_normals (slope/roughness inputs)            │
+│    ← /odom (robot pose)                                         │
+│    → /elevation_map  (grid_map)                                 │
 │                                                                 │
 │  traversability_estimation                                      │
-│    ← /elevation_map                                            │
-│    → /traversability_map  (slope + roughness + step height)    │
-│    → /traversability_costmap  (nav_msgs/OccupancyGrid)         │
+│    ← /elevation_map                                             │
+│    → /traversability_map  (slope + roughness + step height)     │
+│    → /traversability_costmap  (nav_msgs/OccupancyGrid)          │
 └─────────────────────────────────────────────────────────────────┘
                           │ /traversability_costmap
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  LOCALIZATION                          (Phase 2+)               │
 │                                                                 │
-│  Leg Odometry (LKO) ──→ /odom_lko  (joint states + IMU)        │
-│  ORB-SLAM3 (RGBD) ──→ /odom_slam (loop-closure drift corr.)    │
+│  Leg Odometry (LKO) ──→ /odom_lko  (joint states + IMU)         │
+│  ORB-SLAM3 (stereo) ──→ /odom_slam (loop-closure drift corr.)   │
 │                                                                 │
-│  robot_localization EKF                                        │
-│    ← /odom_lko + /odom_slam + /imu/data                       │
-│    → /odom  (fused, authoritative)                             │
-│    → /tf: map → odom                                           │
+│  robot_localization EKF                                         │
+│    ← /odom_lko + /odom_slam + /imu/data                         │
+│    → /odom  (fused, authoritative)                              │
+│    → /tf: map → odom                                            │
 │                                                                 │
-│  Phase 1 fallback: static map→odom TF (fake localisation)      │
+│  Phase 1 fallback: static map→odom TF (fake localisation)       │
 └─────────────────────────────────────────────────────────────────┘
                           │ /odom, /tf
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  PLANNING & CONTROL                                             │
 │                                                                 │
-│  Nav2 (SmacPlannerLattice global, MPPI local)                  │
-│    ← /traversability_costmap                                   │
-│    ← /odom, /tf                                                │
-│    → /cmd_vel  (Twist: linear.x/y + angular.z)                │
-│    goal: /navigate_to_pose action (RViz2 or QGC mission)       │
+│  Nav2 (SmacPlannerLattice global, MPPI local)                   │
+│    ← /traversability_costmap                                    │
+│    ← /odom, /tf                                                 │
+│    → /cmd_vel  (Twist: linear.x/y + angular.z)                  │
+│    goal: /navigate_to_pose action (RViz2 or QGC mission)        │
 └─────────────────────────────────────────────────────────────────┘
                           │ /cmd_vel
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  LOCOMOTION                                                     │
 │                                                                 │
-│  Phase 1–2: Bézier-swing trot (analytic IK, 100 Hz)           │
-│  Phase 3:   Perceptive RL policy (Isaac Lab → TensorRT/Jetson) │
-│               ← /cmd_vel + /elevation_map (proprioception)     │
-│               → /quadruped_joint_controller/commands           │
+│  Phase 1–2: Bézier-swing trot (analytic IK, 100 Hz)             │
+│  Phase 3:   Perceptive RL policy (Isaac Lab → TensorRT/Jetson)  │
+│               ← /cmd_vel + /elevation_map (proprioception)      │
+│               → /quadruped_joint_controller/commands            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -310,7 +349,9 @@ Two narrower entry points select a subset of the same module composes: `docker-c
 |---|---|---|---|
 | `quadruped_gazebo` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Physics sim, robot spawn, sensor publishing |
 | `rviz` | `osrf/ros:jazzy-desktop-full` | 1+ | Standalone visualization for simulation and offline pipelines |
-| `monocular_depth` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 2+ | Metric3D V2 → metric depth |
+| `monocular_depth` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 2+ | Metric3D V2 → metric depth (**on hold**: monocular path) |
+| `zed_camera` (planned) | Jazzy + ZED SDK (needs CUDA; base fixed in stereo Step 3) | 2+ | ZED 2i driver (zed-ros2-wrapper): rectified stereo, SDK depth + confidence, IMU; live or SVO2 playback. Publishes no TF |
+| `stereo_depth` (planned) | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Sim depth source, since the ZED SDK can't ingest Gazebo images: `gt_noise` (GT depth + ZED-like error model, default) or `sgbm` (OpenCV matcher on the rendered pair) → `/depth/image_raw` + `/depth/confidence` |
 | `depth_comparison` | `nvidia/cuda:12.6.3-cudnn-devel-ubuntu24.04` | 2+ | N depth models on identical frames → depth + cloud per model |
 | `depth_image_proc` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Depth → point cloud conversion |
 | `elevation_mapping_cupy` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 1+ | GPU elevation mapping |
@@ -321,7 +362,7 @@ Two narrower entry points select a subset of the same module composes: `docker-c
 | `quadruped_gait_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1–2 | Spot Micro Bézier-swing trot/crawl + whole-body IK; joint commands only |
 | `quadruped_rl_controller` | `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` | 3 | TensorRT perceptive RL policy from Isaac Lab |
 | `quadruped_test_controller` | `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` | 1+ | Keyboard teleop |
-| `video_camera_sim` | `ros:jazzy-ros-base` | 2+ | Plays pre-recorded video as camera topics for offline testing |
+| `video_camera_sim` | `ros:jazzy-ros-base` | 2+ | Plays pre-recorded video as camera topics for offline testing (monocular bench, on hold) |
 
 > **Base image note**: Use `dustynv/ros:jazzy-ros-base-l4t-r36.4.0` for CPU/ROS-only nodes. Use `dustynv/ros:jazzy-pytorch-l4t-r36.4.0` for nodes requiring GPU inference (monocular depth, elevation mapping, RL policy). These images ship pre-built PyTorch + CUDA for Jetson; avoid `nvidia/cuda` + manual PyTorch installs on ARM64.
 
@@ -351,18 +392,21 @@ Gait Controller
 ─────────────────────────────────────────────────────────────────
 
 [Phase 2+ – Real hardware / full stack]
-RGB Camera
-  → /camera/image_raw, /camera/camera_info
+Stereo Camera: ZED 2i via zed-ros2-wrapper (live, or SVO2 playback offline)   [planned]
+  → /stereo/{left,right}/image_rect, /stereo/{left,right}/camera_info
+  → /depth/image_raw      (ZED SDK stereo depth, registered to left, metres)
+  → /depth/confidence, /depth/camera_info
+  → /stereo/imu/data      (ZED onboard IMU, image-synced)
+  (Gazebo: stereo camera pair + camera IMU → same image / IMU topics;
+   GT depth → stereo_depth (ZED-like error model) → same depth topics)
 
+[On hold: monocular path, still buildable; never run alongside stereo depth]
 Video Camera Sim (offline testing, replaces live camera)
   ← pre-recorded video file
-  → /camera/image_raw     (sensor_msgs/Image, BGR8)
-  → /camera/camera_info   (sensor_msgs/CameraInfo)
-
+  → /camera/image_raw, /camera/camera_info
 Monocular Depth (Metric3D V2)
   ← /camera/image_raw + /camera/camera_info  (intrinsics = metric scale)
   → /depth/image_raw      (metric, in metres)
-  → /depth/surface_normals (planned; Metric3D's normal head is not wired yet)
 
 Depth Image Proc
   ← /depth/image_raw + /camera/camera_info
@@ -379,7 +423,8 @@ Traversability Estimation
 
 Localization
   ← /odom_lko (from gait controller joint states + kinematics)
-  ← /camera/image_raw + /depth/image_raw  (ORB-SLAM3 RGBD)
+  ← /stereo/{left,right}/image_rect + /imu/data  (ORB-SLAM3 IMU_STEREO, planned;
+     first step: RGBD with left image + stereo depth)
   ← /imu/data
   → /odom  (robot_localization EKF fusion)
   → /tf: map→odom
@@ -401,11 +446,15 @@ Gait Controller (Phase 1–2) / RL Policy (Phase 3)
 
 ## Key Source Files
 
+> **Monocular path, on hold** (keep building; not part of the stereo pipeline): `monocular_depth`, `video_camera_sim`, `ground_plane_estimation`, `odometry_scale_estimation`, `pointcloud_scale_correction`, and `lidar_odometry` in its monodepth-cloud role. `depth_comparison` stays active: stereo backends are added there (stereo Step 2).
+
 - `src/quadruped_kinematics/` — Spot Micro geometry (`SPOT_MICRO`: 0.186 × 0.078 m hip pivots, 55 mm hip link, 107.5 mm upper leg, 130 mm lower leg), closed-form leg IK/FK/Jacobian and whole-body IK (body pose over fixed footholds). Pure numpy, shared by the gait controller and leg odometry; its tests parse the URDF xacro and fail if the numbers diverge. Joint order contract: `JOINT_ORDER`.
 - `src/quadruped_gait_controller/` — Spot Micro gait node (`gait_node.py` + pure-python `gait.py`). Consumes `/cmd_vel`, publishes joint commands only — leg kinematics odometry (`/odom_lko`) comes from `src/quadruped_leg_odometry/`, not this node. Bézier-swing gait (Hyun et al. 2014 curve) with per-leg stride vectors (`v + ω × r`, so yaw = tangential strides), `trot` (0.4 s cycle, duty 0.7, 20 mm lift; default) or `walk` (1.0 s crawl, duty 0.75, body shifted into the support triangle). A zero command finishes the cycle before standing. All tuning is ROS parameters (`config/gait_params.yaml`); per-gait defaults live in `GAIT_LIBRARY`. Validated headless in Gazebo: straight at 0.2–0.3 m/s with <2° roll/pitch, turns at the commanded rate. A duty-0.5 flight trot falls under position control — don't go back to it.
 - `src/quadruped_gazebo/urdf/quadruped.urdf.xacro` — Spot Micro URDF: 12 joints (hip_roll, hip_pitch, knee per leg; all knees backward), 2.82 kg, 3.4 N·m / 7 rad/s servo limits, depth camera, IMU, RGB camera. The stand pose (`initial_value`) is derived from the geometry and `stand_height` (0.16 m) so the robot spawns standing; link lengths must match `quadruped_kinematics` (tested). `gazebo.launch.py headless:=true` runs the server only (CI / no display).
+  `camera_rig:=mono|stereo` selects the legacy front/depth camera pair or the simulated ZED 2i (driver-named frames, `/stereo/*` topics, camera IMU; see Current Target Step 1). On the real robot use `camera_rig:=stereo publish_zed_imu_link:=false`.
 - `src/quadruped_gazebo/config/ros2_control.yaml` — JointGroupPositionController mapping for all 12 joints.
-- `src/quadruped_gazebo/launch/gazebo.launch.py` — Spawns robot, loads controllers, starts ROS-Gazebo bridges.
+- `src/quadruped_gazebo/launch/gazebo.launch.py` — Spawns robot, loads controllers, starts ROS-Gazebo bridges (both rigs' topics; the unused rig is silent).
+- `src/quadruped_gazebo/quadruped_gazebo/benchmark_generator.py` — Deterministic benchmark worlds from `config/benchmarks/*.yaml`: terrain mesh, obstacles, and seeded procedural textures (`textures:` block; launch override `textures:=config|true|false`).
 - `src/video_camera_sim/` — Plays pre-recorded video files as `/camera/image_raw` + `/camera/camera_info` for offline testing of perception and localization pipelines. Configurable FPS, loop, and camera intrinsics.
 - `src/monocular_depth/` — (Phase 2) Metric3D V2 inference node — the production depth source. Intrinsics-conditioned, so it needs CameraInfo and drops frames until one arrives. TensorRT FP16 export for Jetson is still to come.
 - `src/depth_comparison/` — Runs N depth backends on the *same* RGB frame and publishes one metric depth image + point cloud per model under `/depth_compare/<key>/`. Backends: Gazebo depth sensor (relay reference), Depth Anything V2 (VKITTI + Hypersim checkpoints), Metric3D V2. Add a model by implementing `DepthBackend` and registering it in `backends/__init__.py`. Shares the repo-root `compat/mmcv/` shim (a deliberate mmengine-backed stand-in for Metric3D's mmcv 1.x imports) with `monocular_depth`; both images therefore build from the repository root, not their own directory.
@@ -415,7 +464,7 @@ Gait Controller (Phase 1–2) / RL Policy (Phase 3)
 - `src/odometry_scale_estimation/` — The second kinetic probe (Alternative 2): compares a metric odometry stream (`/odom_lko`, leg kinematics + IMU) against a scale-bearing one (`/odom_lidar` — KISS-ICP fed the monodepth cloud via `LIDAR_POINTCLOUD_TOPIC=/depth/points`) over a sliding window (default 5 s) and publishes `/odom_scale[/<key>]/{scale,shift,residual,ref_motion,marker}`. Compares matched displacement chords (frame-invariant, so no extrinsic alignment; reference interpolated at estimate stamps), fit models pluggable in `trajectory_compare.py` (pure numpy): `scalar` (`chord_est = s·chord_ref`, default) or `affine` (`… + b`; needs chord-length spread, else rejected). Raw per-window output — smoothing/gating live in `pointcloud_scale_correction`, same contract as the ground-plane probe. Publishes nothing while standing (`min_motion` excitation gate); `ref_motion` distinguishes "standing" from "broken". See `documentation/odometry_scale_estimation.md`.
 - `src/elevation_mapping_cupy_pkg/` — GPU elevation map (3m×3m, 5cm resolution, 2 Hz). Ingests point cloud + surface normals for covariance-weighted fusion. Vendored `elevation_mapping_cupy` repo.
 - `src/traversability_estimation/` — (Phase 2) Computes traversability costmap from elevation map: slope angle, roughness (height variance), step height against leg reach limits. Publishes `nav_msgs/OccupancyGrid`.
-- `src/localization/` — (Phase 2) ORB-SLAM3 in RGBD mode (monocular depth as D channel) + `robot_localization` EKF fusing LKO + SLAM + IMU. LKO is the primary short-horizon source; SLAM provides loop-closure drift correction.
+- `src/localization/` — (Phase 2) ORB-SLAM3 (the node supports MONOCULAR and RGBD today; STEREO / IMU_STEREO are planned for the ZED 2i) + `robot_localization` EKF fusing LKO + SLAM + IMU. LKO is the primary short-horizon source; SLAM provides loop-closure drift correction.
 - `src/nav2_mppi_navigation/nav2_mppi_navigation/config/nav2_mppi_params.yaml` — Nav2 + MPPI config. MPPI: 2000 rollouts, 56-step horizon, `Omni` motion model (quadruped is holonomic). Costmap reads `/traversability_costmap`, 4m×4m rolling window, 5cm resolution.
 - `src/nav2_mppi_navigation/nav2_mppi_navigation/launch/nav2_mppi.launch.py` — Phase 1: static `map→odom` TF. Phase 2+: consumes `/odom` + `/tf` from localization container.
 
@@ -439,8 +488,8 @@ propose it as a patch, do not do it silently.
 | Source | Role | Failure mode |
 |---|---|---|
 | Leg kinematics odometry (LKO) | Primary short-horizon odometry | Drift on slippery/uneven terrain |
-| ORB-SLAM3 (RGBD, monocular depth as D) | Loop closure, long-horizon drift correction | Fails on texture-poor / dark environments |
-| IMU | Angular velocity + gravity vector | No position, biases over time |
+| ORB-SLAM3 (stereo-inertial on the ZED 2i; RGBD with stereo depth as the first step) | Loop closure, long-horizon drift correction | Fails on texture-poor / dark environments |
+| IMU (the ZED 2i's onboard IMU on real hardware) | Angular velocity + gravity vector | No position, biases over time |
 | `robot_localization` EKF | Fuses all three → `/odom` | Single point of failure; tune noise covariances carefully |
 
 LKO is the fallback when vision degrades. SLAM loop closure corrects accumulated LKO drift. Neither is used alone.
@@ -579,10 +628,15 @@ Rules:
 
 ## Known Limitations & Open Decisions
 
-- **Stereo trade-off**: NVIDIA Isaac ROS (`isaac_ros_dnn_stereo_depth`, cuVSLAM, FoundationStereo) is significantly richer for stereo pairs. If a second camera is affordable, stereo should be reconsidered before committing to monocular-only.
+- **Gazebo rendering is not on the GPU in the stock containers.** The host's NVIDIA runtime runs in CDI mode and injects compute libraries only; `libEGL_nvidia` / `libGLX_nvidia` and the glvnd vendor files are missing in the container, and `quadruped_gazebo`'s compose forces `MESA_LOADER_DRIVER_OVERRIDE=llvmpipe`. Cameras therefore render on the CPU. Headless validation (2026-11-19) ran on the GPU by staging the host's `libEGL_nvidia.so.0`, `libnvidia-{eglcore,glsi,gpucomp,glcore,tls,glvkspirv}` under `build/` and setting `LD_LIBRARY_PATH` + `__EGL_VENDOR_LIBRARY_FILENAMES`. Even then the textured benchmark world runs at real-time factor ~0.55, for both rigs; the stereo rig itself costs almost nothing extra.
+
+- **Stereo decided (ZED 2i, 2.1 mm)**: replaces monocular-only. NVIDIA Isaac ROS (`isaac_ros_dnn_stereo_depth` / ESS, FoundationStereo, cuVSLAM) remains the main alternative to the ZED SDK for depth and VIO on Jetson.
+- **2.1 mm lens trade-off**: the wide FOV (~101°×69° at HD720) covers the near field: with the camera level at ~0.17 m, the ground is visible from ~0.25 m, and rated depth starts at 0.3 m. The cost is angular resolution. fx ≈ 528 px gives σ_Z ≈ 4 mm at 1 m, ~3.6 cm at 3 m and ~10 cm at 5 m (assuming σ_d = 0.25 px), so useful mapping range on the 5 cm grid is roughly 3.5 m.
+- **Sim depth is modelled, not matched**: the ZED SDK accepts real cameras, SVO files and Isaac Sim streams only, not Gazebo. Sim depth is ground truth plus a ZED-like error model, so sim results for depth-sensitive code are only as good as that model. Its parameters must be fitted to SVO2 recordings (stereo Step 5), and the `sgbm` backend provides a pessimistic bound.
+- **ZED SDK is closed source** and needs an NVIDIA GPU. Keep it behind the canonical `/stereo/*` and `/depth/*` topics so an open matcher (`stereo_depth`) and open VIO (ORB-SLAM3 / cuVSLAM) can replace it without touching downstream modules.
 - **MPPI motion model**: Currently `Omni` for holonomic quadruped motion. Tune `vy_max` to match actual lateral gait speed.
 - **Traversability costmap resolution**: 5cm grid at 3m×3m is appropriate for indoor/controlled outdoor. Expand to 10m×10m for open terrain but watch GPU memory on Orin Nano.
-- **ORB-SLAM3 monocular scale**: In `MONOCULAR` mode, ORB-SLAM3 scale is metric-consistent only if the monocular depth output is metric-accurate. In `RGBD` mode with monocular depth as the D channel, scale comes from the depth network. Validate carefully on real hardware.
+- **ORB-SLAM3 monocular scale** (on hold with the monocular path; stereo takes metric scale from the baseline): In `MONOCULAR` mode, ORB-SLAM3 scale is metric-consistent only if the monocular depth output is metric-accurate. In `RGBD` mode with monocular depth as the D channel, scale comes from the depth network. Validate carefully on real hardware.
 - **Elevation map frame in offline mode**: Using `map` frame works when ORB-SLAM3 drift is small. For longer sequences with loop closures, the map frame may have discontinuities that affect elevation map coherence.
 - **QGroundControl integration**: Planned. Requires MAVLink bridge (`MAVROS` or `px4_ros_com`) publishing mission waypoints as `nav2_msgs/action/NavigateThroughPoses`.
 
@@ -590,6 +644,49 @@ Rules:
 
 
 ## Current Target
+
+**Stereo pipeline on a ZED 2i (2.1 mm lens).** Monocular depth-scale work is on hold; its record is kept verbatim below, so resume from there.
+
+### Stereo Pipeline
+
+Decisions (2026-11-18):
+- **Lens: 2.1 mm.** The 4 mm lens's 1.5 m minimum depth would leave most of the visible ground unmeasured on a robot this low.
+- **Hardware depth: ZED SDK** (GPU, has a confidence map). Downstream sees only `/depth/*`, so an open matcher can replace it later without changes.
+- **Sim depth: ground truth + a ZED-like error model.** The ZED SDK cannot ingest Gazebo images (its wrapper's `sim_mode` takes Isaac Sim streams only), so sim reproduces the ZED's *output contract*, not its algorithm. An OpenCV SGBM backend on the rendered pair is the pessimistic counterpart. Real ZED depth should fall between the two: GT + noise has no matching failures, while SGBM has holes and no learned fill.
+- **SLAM: ORB-SLAM3 stereo-inertial** with the ZED's IMU. ZED positional tracking is a comparison channel only; cuVSLAM is the fallback if ORB-SLAM3 is too slow on Orin.
+
+Camera facts the plan depends on (ZED 2i, 2.1 mm):
+- 12 cm baseline; onboard IMU; USB 3; rolling shutter; rated depth 0.3–20 m.
+- At HD720 (1280×720), the nominal fx is 528 px, so the FOV is ~101°×69°. The 110°×70° datasheet figure is for the full sensor. Per-unit factory calibration overrides the nominal value: trust the driver's `camera_info`.
+- Depth noise is σ_Z ≈ Z²·σ_d/(f·B) ≈ 0.004·Z² m (σ_d = 0.25 px): ~4 mm at 1 m, ~3.6 cm at 3 m, ~10 cm at 5 m. It reaches the 5 cm map grid at ~3.5 m.
+- With the camera level at ~0.17 m, the ground is visible from ~0.25 m. The whole visible ground is within rated range.
+
+- [x] Step 0: Docs: stereo direction in CLAUDE.md, monocular path on hold, lens and depth-source decisions.
+- [x] Step 1: Sim stereo rig. `camera_rig:=stereo` (URDF / `gazebo.launch.py` / `simulation_benchmark.launch.py`; default `mono` until Step 2 gives the default sim a depth source). Profile: `stereo-sim.env` + `docker-compose-stereo-sim.yaml`.
+      - The ZED 2i on top of the head (229 g, 175×30×43 mm), with the driver's frames (`zed_camera_link → zed_camera_center → zed_{left,right}_camera_frame[_optical]`, `zed_left_camera_frame → zed_imu_link`), offsets from Stereolabs' `zed_macro.urdf.xacro`. Left camera 0.205 m above ground.
+      - Topics: `/stereo/{left,right}/image_rect` + `camera_info` and `/stereo/depth_gt/image_raw` + `camera_info` (ground truth, left-registered), all at 15 Hz with identical stamps. `/stereo/imu/data` at 200 Hz.
+      - Intrinsics: fx = fy = 528, cx = 640, cy = 360; the right camera's P carries Tx = −fx·B = −63.36. `test_stereo_rig.py` pins the frame names, baseline and intrinsics.
+      - IMU noise is a **placeholder** (community ZED 2 Kalibr set) to replace with an Allan-variance fit. On the real camera set `sensors_pub_rate: 200` to match, and launch the URDF with `publish_zed_imu_link:=false` (the driver publishes that edge from factory calibration).
+      - The benchmark generator writes seeded, tileable procedural textures (terrain + every obstacle). `textures:=config|true|false` overrides the scenario. The monocular profiles pin `camera_rig:=mono textures:=false` so their results stay reproducible.
+      - The camera moves the CoM ~1.1 cm forward. Walking forward is unaffected, but turning in place lost ~10% of the commanded yaw and roll/pitch roughly doubled; `GAIT_BODY_X=-0.011` (gait `body_x`, set in `stereo-sim.env`) restores the camera-less baseline (headless check, 2026-11-19).
+- [ ] Step 2: `stereo_depth` node (sim depth source) → `/depth/image_raw` + `/depth/confidence` + `/depth/camera_info`.
+      - Backend `gt_noise` (default): GT depth → clamp to the ZED range (0.3–20 m, configurable) → disparity-space noise with σ_Z(Z) above, spatially correlated through a configurable low-pass filter (ZED neural depth is smooth, not per-pixel white) → invalid pixels at depth discontinuities and on configurable dropout → confidence derived from σ_Z.
+      - Backend `sgbm`: OpenCV SGBM on the rendered pair; also registered in `depth_comparison` so both are scored against GT per range bin.
+      - The existing sim pipeline (depth_image_proc → elevation mapping) then runs on stereo depth.
+- [ ] Step 3: ZED driver module `zed_camera`: Jazzy + ZED SDK + zed-ros2-wrapper, non-root user, USB passthrough. Pin the SDK and wrapper versions and confirm that pair supports Jazzy and JetPack 6.
+      Launch with `general.camera_name: zed`, `publish_urdf:=false`, `pos_tracking.publish_tf:=false`, `pos_tracking.publish_map_tf:=false`, `sensors.sensors_pub_rate: 200`, and remap onto the canonical topics. Copy the factory-calibrated intrinsics and IMU extrinsics into the sim rig (Step 1) once the camera is in hand.
+- [ ] Step 4: Localization, developed in sim first (the rig from Step 1 provides the stereo pair + IMU), then on SVO2.
+      First, ORB-SLAM3 RGBD with the left image + `/depth/image_raw` (launch remaps only, no node change). Then add `STEREO` / `IMU_STEREO` to `orbslam3_rgbd_node` (IMU noise densities and camera-IMU extrinsics in the settings YAML).
+      On hardware, log ZED positional tracking alongside as a comparison channel.
+- [ ] Step 5: Offline stereo bench. Record SVO2 (stereo + IMU) at robot height and play it back through the wrapper into the full pipeline; this replaces iPhone videos as the real-camera test bench.
+      Fit the `gt_noise` parameters (σ_d, correlation length, dropout) to real ZED depth, e.g. plane residuals on a flat floor, and feed them back into the sim.
+- [ ] Step 6: Mapping on stereo. Elevation mapping on `/depth/points` with confidence-derived variance; check map extent against the ~3.5 m useful range.
+
+Free sanity check from the on-hold work: run `ground_plane_estimation` on stereo depth. Its `scale` should sit at ~1.0, and a deviation means a calibration or frame error, not a model error.
+
+### Monocular depth scale (on hold)
+
+Original notes, kept as they were when the work was paused:
 
 Now the pipeline is working. But Depth Anything V2 has a huge scale problem. I want to implement other models and compare them side to side. I'll first try comparing with visual inspection, if this is not enough I'll develop a quantitative comparison module.
 

@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
+import yaml
 
 from quadruped_gazebo.benchmark_generator import (
     ScenarioError,
@@ -96,6 +97,75 @@ def test_generated_world_is_well_formed_xml(tmp_path: Path) -> None:
     rock_y = int(np.argmin(np.abs(y_coords - rock_pose[1])))
     seating = rock_pose[2] - rock_radius - float(elevation[rock_y, rock_x])
     assert seating == pytest.approx(0.003, abs=1e-8)
+
+
+def test_textures_are_seeded_and_applied(tmp_path: Path) -> None:
+    first = generate_world(SCENARIO, tmp_path / "first")
+    second = generate_world(SCENARIO, tmp_path / "second")
+    other_seed = generate_world(SCENARIO, tmp_path / "other", seed_override=43)
+
+    assert set(first["textures"]) == {"ground", "rock", "rubble", "bridge", "wall"}
+    for name, path in first["textures"].items():
+        assert _digest(path) == _digest(second["textures"][name])
+        assert _digest(path) != _digest(other_seed["textures"][name])
+
+    root = ET.parse(first["world"]).getroot()
+    terrain_map = root.findtext(
+        "./world/model[@name='benchmark_terrain']/link/visual/material/pbr/metal/albedo_map"
+    )
+    assert terrain_map == str(first["textures"]["ground"])
+    rock_map = root.findtext(
+        "./world/model[@name='easy_rocks_00']/link/visual/material/pbr/metal/albedo_map"
+    )
+    assert rock_map == str(first["textures"]["rock"])
+
+    # The terrain mesh needs UVs for the albedo map to land on it.
+    mesh_text = first["terrain_mesh"].read_text()
+    assert "\nvt " in mesh_text
+    assert "\nf 1/1/1 " in mesh_text
+
+    manifest = json.loads(first["manifest"].read_text())
+    assert manifest["artifacts"]["textures/ground.png"] == _digest(
+        first["textures"]["ground"]
+    )
+
+    # Texture must carry real contrast, or it gives stereo nothing to match.
+    from PIL import Image
+
+    pixels = np.asarray(Image.open(first["textures"]["ground"]), dtype=float)
+    assert pixels.std() > 10.0
+
+
+def test_textures_can_be_disabled(tmp_path: Path) -> None:
+    scenario = load_scenario(SCENARIO)
+    scenario["textures"]["enabled"] = False
+    path = tmp_path / "flat.yaml"
+    path.write_text(yaml.safe_dump(scenario))
+    artifacts = generate_world(path, tmp_path / "flat")
+    assert artifacts["textures"] == {}
+    root = ET.parse(artifacts["world"]).getroot()
+    assert root.find(".//albedo_map") is None
+    assert "\nvt " not in artifacts["terrain_mesh"].read_text()
+
+
+def test_textures_override_beats_the_scenario(tmp_path: Path) -> None:
+    flat = generate_world(SCENARIO, tmp_path / "flat", textures_override=False)
+    assert flat["textures"] == {}
+    assert ET.parse(flat["world"]).getroot().find(".//albedo_map") is None
+    assert json.loads(flat["manifest"].read_text())["textures"]["enabled"] is False
+
+    textured = generate_world(SCENARIO, tmp_path / "tex", textures_override=True)
+    assert set(textured["textures"]) == {"ground", "rock", "rubble", "bridge", "wall"}
+    # The flat world's geometry is untouched by the texture switch.
+    assert _digest(flat["elevation"]) == _digest(textured["elevation"])
+
+
+def test_invalid_texture_resolution_is_rejected() -> None:
+    scenario = load_scenario(SCENARIO)
+    broken = copy.deepcopy(scenario)
+    broken["textures"]["resolution"] = 1000
+    with pytest.raises(ScenarioError, match="textures.resolution"):
+        validate_scenario(broken)
 
 
 def test_duplicate_feature_id_is_rejected() -> None:

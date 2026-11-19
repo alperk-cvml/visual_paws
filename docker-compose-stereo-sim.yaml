@@ -1,0 +1,16 @@
+# Stereo (ZED 2i) Gazebo simulation: stereo pipeline Step 1.
+#
+# Usage:
+#   docker compose --env-file stereo-sim.env \
+#     -f docker-compose-stereo-sim.yaml up -d --build
+#   tmux attach -t quadruped_test_controller   # drive the robot
+#
+# Gazebo with the simulated ZED 2i rig on the textured benchmark world, the
+# gait controller, keyboard teleop and RViz. Depth for the downstream
+# pipeline (stereo_depth, Step 2) is not wired yet.
+
+include:
+  - path: src/quadruped_gazebo/docker-compose.yaml
+  - path: src/rviz/docker-compose.yaml
+  - path: src/quadruped_gait_controller/docker-compose.yaml
+  - path: src/quadruped_test_controller/docker-compose.yaml

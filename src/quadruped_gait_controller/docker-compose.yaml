@@ -17,6 +17,9 @@ services:
       - USE_SIM_TIME=${USE_SIM_TIME:-true}
       # trot | walk (see config/gait_params.yaml for everything else)
       - GAIT_TYPE=${GAIT_TYPE:-trot}
+      # Body fore/aft offset (m); empty keeps gait_params.yaml. The ZED 2i rig
+      # (stereo-sim.env) needs -0.011 to re-centre the body over the feet.
+      - GAIT_BODY_X=${GAIT_BODY_X:-}
 
     volumes:
       # ROS 2 workspace
@@ -41,4 +44,5 @@ services:
         source /work/ws/install/setup.bash
         ros2 launch quadruped_gait_controller gait.launch.py \
           use_sim_time:=$${USE_SIM_TIME} \
-          gait_type:=$${GAIT_TYPE}
+          gait_type:=$${GAIT_TYPE} \
+          body_x:=$${GAIT_BODY_X:-default}

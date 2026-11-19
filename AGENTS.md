@@ -21,7 +21,7 @@ Agents must understand that this repository is heavily containerized and relies 
 ### 2. Architecture Awareness
 - **Modular Design:** AI is injected primarily at the locomotion layer (Phase 3 RL policy). Do not suggest end-to-end AI overhauls for mapping or routing unless specifically requested by the user.
 - **Hardware Constraints:** The target is NVIDIA Jetson Orin Nano/NX. Avoid adding dependencies that require x86-specific binaries or libraries that lack CUDA/ARM64 support.
-- **Camera-Only Constraints:** Do not implement or suggest LiDAR packages (e.g., `velodyne`, `ouster`). Metric depth and surface normals are inferred exclusively from RGB via neural networks.
+- **Camera-Only Constraints:** Do not implement or suggest LiDAR packages (e.g., `velodyne`, `ouster`). Metric depth comes from a stereo camera (ZED 2i, 2.1 mm lens; ZED SDK depth on hardware, ground truth + ZED-like error model in Gazebo); the monocular RGB-network path (Metric3D V2) is on hold but must keep building. See `CLAUDE.md` → Current Target.
 
 ### 3. Build & Test Procedures
 When instructed to compile, build, or test code, agents must:
